@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package flaap.v1alpha1;
+
+import "tensorflow_federated/proto/v0/executor.proto";
+
+option go_package = "github.com/jlewi/flaap/go/protos/v1alpha1";
+
+message Metadata {
+  string name = 1;
+  map<string, string> labels = 2;
+  string resourceVersion = 3;
+}
+
+enum StatusCondition {
+    UNKNOWN = 0;
+    FALSE = 1;
+    TRUE = 2;
+}
+
+message Condition {
+  string type = 1;
+	StatusCondition status = 2;
+}
+
+message TaskStatus {
+  repeated Condition conditions = 1;
+}
+
+message Task {
+    string api_version = 1;
+    string kind = 2;    
+ 
+    Metadata metadata = 3;
+
+    oneof request {
+          tensorflow_federated.v0.CreateValueRequest value = 4;
+          tensorflow_federated.v0.CreateCallRequest call = 5;
+          tensorflow_federated.v0.CreateStructRequest struct = 6;
+    }
+
+    TaskStatus status = 7;
+    tensorflow_federated.v0.Value result = 8;
+}
