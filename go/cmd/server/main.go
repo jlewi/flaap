@@ -6,7 +6,7 @@ import (
 
 	"net"
 	"os"
-	
+
 	"github.com/go-logr/logr"
 	"github.com/jlewi/flaap/go/pkg/tasks"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
