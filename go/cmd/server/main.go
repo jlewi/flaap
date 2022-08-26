@@ -4,6 +4,9 @@ package main
 import (
 	"fmt"
 
+	"net"
+	"os"
+	
 	"github.com/go-logr/logr"
 	"github.com/jlewi/flaap/go/pkg/tasks"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
@@ -17,9 +20,6 @@ import (
 	"github.com/jlewi/p22h/backend/pkg/logging"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-
-	"net"
-	"os"
 )
 
 var (

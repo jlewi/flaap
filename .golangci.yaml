@@ -1,6 +1,5 @@
-linters:
-  #disable-all: true
+linters:  
   enable:    
-    - gofmt
+    - gofmt    
     - goimports
     - staticcheck
