@@ -31,6 +31,5 @@ jobs:
           working-directory: go
           # These options work around the errors in this issue
           # https://github.com/golangci/golangci-lint-action/issues/244
-          skip-go-installation: true
           skip-pkg-cache: true
           skip-build-cache: true
