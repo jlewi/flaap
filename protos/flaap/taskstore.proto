@@ -42,3 +42,42 @@ message Task {
     TaskStatus status = 7;
     tensorflow_federated.v0.Value result = 8;
 }
+
+message CreateRequest {
+  Task task = 1;
+}
+
+message CreateResponse {
+  Task task = 1;
+}
+
+message GetRequest {
+  string name = 1;
+}
+
+message GetResponse {
+  Task task = 1;
+}
+
+message UpdateRequest {
+  Task task = 1;
+}
+
+message UpdateResponse {
+  Task task = 1;
+}
+
+message DeleteRequest {
+  string name = 1;
+}
+
+message DeleteResponse {
+}
+
+// Tasks CRUD service
+service TasksService {
+  rpc Create (CreateRequest) returns (CreateResponse) {}
+  rpc Get (GetRequest) returns (GetResponse) {}
+  rpc Update (UpdateRequest) returns (UpdateResponse) {}
+  rpc Delete (DeleteRequest) returns (DeleteResponse) {}
+}
