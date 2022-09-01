@@ -34,7 +34,10 @@ message Task {
     Metadata metadata = 3;
 
     oneof request {
+          // TODO(jeremy): We should probably rename this field because otherwise we have a field named value which is of type
+          // CreateValueRequest; value might get confused with the result.
           tensorflow_federated.v0.CreateValueRequest value = 4;
+          // TODO(jeremy): I don't think CreateCall Is going to be supported in this asynchronous protocl?
           tensorflow_federated.v0.CreateCallRequest call = 5;
           tensorflow_federated.v0.CreateStructRequest struct = 6;
     }
