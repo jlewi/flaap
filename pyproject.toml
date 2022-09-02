@@ -1,0 +1,3 @@
+[tool.pytest.ini_options]
+# TensorFlow has a bunch of DeprecationWarnings which are spammy
+filterwarnings = ["ignore::DeprecationWarning"]
