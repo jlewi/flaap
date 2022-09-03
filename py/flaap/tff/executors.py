@@ -56,6 +56,9 @@ class TaskStoreExecutor(executor_base.Executor):
         self._channel = channel
         self._stub = taskstore_pb2_grpc.TasksServiceStub(channel)
 
+        # Allow injection for unittesting.
+        self._request_fn = _request
+
     @property
     def is_ready(self) -> bool:
         return self._channel_status == grpc.ChannelConnectivity.READY
@@ -69,7 +72,7 @@ class TaskStoreExecutor(executor_base.Executor):
         """Dispose of the corresponding task."""
         delete_request = taskstore_pb2.DeleteRequest()
         delete_request.name = name
-        _request(self._stub.Delete, delete_request)
+        self._request_fn(self._stub.Delete, delete_request)
 
     @tracing.trace(span=True)
     def set_cardinalities(
@@ -92,33 +95,46 @@ class TaskStoreExecutor(executor_base.Executor):
 
     @tracing.trace(span=True)
     async def create_value(self, value, type_spec=None):
-        @tracing.trace
-        def serialize_value():
-            return executor_serialization.serialize_value(value, type_spec)
-
-        value_proto, type_spec = serialize_value()
-
-        task = taskstore_pb2.Task()
-        task.metadata.name = uuid.uuid4().hex
-        task.value.value.MergeFrom(value_proto)
-
-        create_task_request = taskstore_pb2.CreateRequest(task=task)
-
-        response = _request(self._stub.Create, create_task_request)
-        py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
-        return RemoteValueTask(response.task.metadata.name, type_spec, self)
+        """Create value creates the value in the executor"""
+        # Creating the value is a nullop. The value is returned
+        # so that the caller will pass it along to create_call where it will
+        # be serialized as part of the Task.
+        return TaskInputValue(value, type_spec)
 
     @tracing.trace(span=True)
     async def create_call(self, comp, arg=None):
-        # Currently, create_call isn't implemented because it doesn't seem like this would be needed in
-        # a scenario where workers call into the control plane to request and asynchronously process tasks.
-        # The create_call (https://github.com/tensorflow/federated/blob/main/tensorflow_federated/proto/v0/executor.proto#L73)
-        # requires the client to first issue a CreateValue request to create the function in the worker and then call
-        # create_call. That doesn't really make sense in the case of workers asynchronously calling in to fetch tasks.
-        # In that mode it seems like there should be a single Task creating and invoking the function.
-        raise NotImplementedError(
-            "create_call isn't supported with asynchronous execution via the task store"
+        """create_call creates a task containing the computation with the provided argument.
+
+        Creating the task in the taskstore schedules it for execution.
+
+        Args:
+          computation: A value representing the AST to be run
+          arg: Optional the value to be passed to the computation
+        """
+
+        py_typecheck.check_type(comp, TaskInputValue)
+        # Comp needs to represent a function type as it is supposed to define the operations
+        # to be run
+        comp_proto, type_spec = executor_serialization.serialize_value(
+            comp.value, comp.type_spec
         )
+        py_typecheck.check_type(type_spec, computation_types.FunctionType)
+
+        task = taskstore_pb2.Task()
+        task.metadata.name = uuid.uuid4().hex
+        task.input.function.MergeFrom(comp_proto)
+
+        if arg is not None:
+            arg_proto, _ = executor_serialization.serialize_value(
+                arg.value, arg.type_spec
+            )
+            task.input.argument.MergeFrom(arg_proto)
+
+        create_task_request = taskstore_pb2.CreateRequest(task=task)
+
+        response = self._request_fn(self._stub.Create, create_task_request)
+        py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
+        return TaskValue(response.task.metadata.name, type_spec, self)
 
     @tracing.trace(span=True)
     async def create_struct(self, elements):
@@ -180,8 +196,32 @@ def _is_retryable_grpc_error(error):
     return isinstance(error, grpc.RpcError) and error.code() not in non_retryable_errors
 
 
-class RemoteValueTask(executor_value_base.ExecutorValue):
-    """A reference to a value embedded stored as a task.
+class TaskInputValue(executor_value_base.ExecutorValue):
+    """TaskInputValue is a wrapper around TFF values used for the output of create_value.
+
+    Executors expect to call create_value to embed values in the executor. Those functions
+    are expected to return subclasses of ExecutorValue which can then be passed along
+    to the create_call.
+
+    For the taskstore executor this just stores the arguments to create_value so
+    that serialization can happen when create_call is invoked.
+    """
+
+    def __init__(self, value, type_spec):
+        self.value = value
+        self.type_spec = type_spec
+
+    async def compute(self):
+        raise NotImplementedError(
+            "Compute is not expected to be called on TaskInputValue"
+        )
+
+    def type_signature(self):
+        return self.type_spec
+
+
+class TaskValue(executor_value_base.ExecutorValue):
+    """Represents a Task to be computed.
 
     Inspired by: https://github.com/tensorflow/federated/blob/54ae7836c593746e3dd9a3ccfe74f61d46005c5c/tensorflow_federated/python/core/impl/executors/remote_executor.py#L163
 
@@ -225,12 +265,3 @@ class RemoteValueTask(executor_value_base.ExecutorValue):
     @property
     def name(self):
         return self._name
-
-
-def _ref_to_task_name(self, value_ref: executor_pb2.ValueRef):
-    """Return the task name for the given value ref."""
-    # For now the value_ref id is the same as the task name.
-    # This function is intended to make it easier to change this in the future
-    # e.g. if we introduce something like name / population/ job etc... to have
-    # multiple simultaneously operating jobs.
-    return value_ref.id

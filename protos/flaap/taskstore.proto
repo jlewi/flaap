@@ -33,17 +33,19 @@ message Task {
  
     Metadata metadata = 3;
 
-    oneof request {
-          // TODO(jeremy): We should probably rename this field because otherwise we have a field named value which is of type
-          // CreateValueRequest; value might get confused with the result.
-          tensorflow_federated.v0.CreateValueRequest value = 4;
-          // TODO(jeremy): I don't think CreateCall Is going to be supported in this asynchronous protocl?
-          tensorflow_federated.v0.CreateCallRequest call = 5;
-          tensorflow_federated.v0.CreateStructRequest struct = 6;
-    }
+    TaskInput input = 4;
 
-    TaskStatus status = 7;
-    tensorflow_federated.v0.Value result = 8;
+    TaskStatus status = 5;
+    tensorflow_federated.v0.Value result = 6;    
+}
+
+message TaskInput {
+  // The value represents the function to be executed. It is the result of tracing
+  // the code annotated with tf.computation and turning it into an AST.
+  tensorflow_federated.v0.Value function = 1;
+
+  // Optional the argument to be passed to the function
+  tensorflow_federated.v0.Value argument = 2;
 }
 
 message CreateRequest {

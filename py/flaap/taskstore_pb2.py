@@ -13,12 +13,13 @@ from google.protobuf.internal import enum_type_wrapper
 
 _sym_db = _symbol_database.Default()
 
+
 from tensorflow_federated.proto.v0 import (
     executor_pb2 as tensorflow__federated_dot_proto_dot_v0_dot_executor__pb2,
 )
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n\x15\x66laap/taskstore.proto\x12\x0e\x66laap.v1alpha1\x1a,tensorflow_federated/proto/v0/executor.proto"\x96\x01\n\x08Metadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x34\n\x06labels\x18\x02 \x03(\x0b\x32$.flaap.v1alpha1.Metadata.LabelsEntry\x12\x17\n\x0fresourceVersion\x18\x03 \x01(\t\x1a-\n\x0bLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"J\n\tCondition\x12\x0c\n\x04type\x18\x01 \x01(\t\x12/\n\x06status\x18\x02 \x01(\x0e\x32\x1f.flaap.v1alpha1.StatusCondition";\n\nTaskStatus\x12-\n\nconditions\x18\x01 \x03(\x0b\x32\x19.flaap.v1alpha1.Condition"\xf6\x02\n\x04Task\x12\x13\n\x0b\x61pi_version\x18\x01 \x01(\t\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12*\n\x08metadata\x18\x03 \x01(\x0b\x32\x18.flaap.v1alpha1.Metadata\x12<\n\x05value\x18\x04 \x01(\x0b\x32+.tensorflow_federated.v0.CreateValueRequestH\x00\x12:\n\x04\x63\x61ll\x18\x05 \x01(\x0b\x32*.tensorflow_federated.v0.CreateCallRequestH\x00\x12>\n\x06struct\x18\x06 \x01(\x0b\x32,.tensorflow_federated.v0.CreateStructRequestH\x00\x12*\n\x06status\x18\x07 \x01(\x0b\x32\x1a.flaap.v1alpha1.TaskStatus\x12.\n\x06result\x18\x08 \x01(\x0b\x32\x1e.tensorflow_federated.v0.ValueB\t\n\x07request"3\n\rCreateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"4\n\x0e\x43reateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1a\n\nGetRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"1\n\x0bGetResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"3\n\rUpdateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"4\n\x0eUpdateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1d\n\rDeleteRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"\x10\n\x0e\x44\x65leteResponse*3\n\x0fStatusCondition\x12\x0b\n\x07UNKNOWN\x10\x00\x12\t\n\x05\x46\x41LSE\x10\x01\x12\x08\n\x04TRUE\x10\x02\x32\xb1\x02\n\x0cTasksService\x12I\n\x06\x43reate\x12\x1d.flaap.v1alpha1.CreateRequest\x1a\x1e.flaap.v1alpha1.CreateResponse"\x00\x12@\n\x03Get\x12\x1a.flaap.v1alpha1.GetRequest\x1a\x1b.flaap.v1alpha1.GetResponse"\x00\x12I\n\x06Update\x12\x1d.flaap.v1alpha1.UpdateRequest\x1a\x1e.flaap.v1alpha1.UpdateResponse"\x00\x12I\n\x06\x44\x65lete\x12\x1d.flaap.v1alpha1.DeleteRequest\x1a\x1e.flaap.v1alpha1.DeleteResponse"\x00\x42+Z)github.com/jlewi/flaap/go/protos/v1alpha1b\x06proto3'
+    b'\n\x15\x66laap/taskstore.proto\x12\x0e\x66laap.v1alpha1\x1a,tensorflow_federated/proto/v0/executor.proto"\x96\x01\n\x08Metadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x34\n\x06labels\x18\x02 \x03(\x0b\x32$.flaap.v1alpha1.Metadata.LabelsEntry\x12\x17\n\x0fresourceVersion\x18\x03 \x01(\t\x1a-\n\x0bLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"J\n\tCondition\x12\x0c\n\x04type\x18\x01 \x01(\t\x12/\n\x06status\x18\x02 \x01(\x0e\x32\x1f.flaap.v1alpha1.StatusCondition";\n\nTaskStatus\x12-\n\nconditions\x18\x01 \x03(\x0b\x32\x19.flaap.v1alpha1.Condition"\xdb\x01\n\x04Task\x12\x13\n\x0b\x61pi_version\x18\x01 \x01(\t\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12*\n\x08metadata\x18\x03 \x01(\x0b\x32\x18.flaap.v1alpha1.Metadata\x12(\n\x05input\x18\x04 \x01(\x0b\x32\x19.flaap.v1alpha1.TaskInput\x12*\n\x06status\x18\x05 \x01(\x0b\x32\x1a.flaap.v1alpha1.TaskStatus\x12.\n\x06result\x18\x06 \x01(\x0b\x32\x1e.tensorflow_federated.v0.Value"o\n\tTaskInput\x12\x30\n\x08\x66unction\x18\x01 \x01(\x0b\x32\x1e.tensorflow_federated.v0.Value\x12\x30\n\x08\x61rgument\x18\x02 \x01(\x0b\x32\x1e.tensorflow_federated.v0.Value"3\n\rCreateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"4\n\x0e\x43reateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1a\n\nGetRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"1\n\x0bGetResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"3\n\rUpdateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"4\n\x0eUpdateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1d\n\rDeleteRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"\x10\n\x0e\x44\x65leteResponse*3\n\x0fStatusCondition\x12\x0b\n\x07UNKNOWN\x10\x00\x12\t\n\x05\x46\x41LSE\x10\x01\x12\x08\n\x04TRUE\x10\x02\x32\xb1\x02\n\x0cTasksService\x12I\n\x06\x43reate\x12\x1d.flaap.v1alpha1.CreateRequest\x1a\x1e.flaap.v1alpha1.CreateResponse"\x00\x12@\n\x03Get\x12\x1a.flaap.v1alpha1.GetRequest\x1a\x1b.flaap.v1alpha1.GetResponse"\x00\x12I\n\x06Update\x12\x1d.flaap.v1alpha1.UpdateRequest\x1a\x1e.flaap.v1alpha1.UpdateResponse"\x00\x12I\n\x06\x44\x65lete\x12\x1d.flaap.v1alpha1.DeleteRequest\x1a\x1e.flaap.v1alpha1.DeleteResponse"\x00\x42+Z)github.com/jlewi/flaap/go/protos/v1alpha1b\x06proto3'
 )
 
 _STATUSCONDITION = DESCRIPTOR.enum_types_by_name["StatusCondition"]
@@ -27,11 +28,13 @@ UNKNOWN = 0
 FALSE = 1
 TRUE = 2
 
+
 _METADATA = DESCRIPTOR.message_types_by_name["Metadata"]
 _METADATA_LABELSENTRY = _METADATA.nested_types_by_name["LabelsEntry"]
 _CONDITION = DESCRIPTOR.message_types_by_name["Condition"]
 _TASKSTATUS = DESCRIPTOR.message_types_by_name["TaskStatus"]
 _TASK = DESCRIPTOR.message_types_by_name["Task"]
+_TASKINPUT = DESCRIPTOR.message_types_by_name["TaskInput"]
 _CREATEREQUEST = DESCRIPTOR.message_types_by_name["CreateRequest"]
 _CREATERESPONSE = DESCRIPTOR.message_types_by_name["CreateResponse"]
 _GETREQUEST = DESCRIPTOR.message_types_by_name["GetRequest"]
@@ -93,6 +96,17 @@ Task = _reflection.GeneratedProtocolMessageType(
     },
 )
 _sym_db.RegisterMessage(Task)
+
+TaskInput = _reflection.GeneratedProtocolMessageType(
+    "TaskInput",
+    (_message.Message,),
+    {
+        "DESCRIPTOR": _TASKINPUT,
+        "__module__": "flaap.taskstore_pb2"
+        # @@protoc_insertion_point(class_scope:flaap.v1alpha1.TaskInput)
+    },
+)
+_sym_db.RegisterMessage(TaskInput)
 
 CreateRequest = _reflection.GeneratedProtocolMessageType(
     "CreateRequest",
@@ -189,8 +203,8 @@ if _descriptor._USE_C_DESCRIPTORS == False:
     DESCRIPTOR._serialized_options = b"Z)github.com/jlewi/flaap/go/protos/v1alpha1"
     _METADATA_LABELSENTRY._options = None
     _METADATA_LABELSENTRY._serialized_options = b"8\001"
-    _STATUSCONDITION._serialized_start = 1096
-    _STATUSCONDITION._serialized_end = 1147
+    _STATUSCONDITION._serialized_start = 1054
+    _STATUSCONDITION._serialized_end = 1105
     _METADATA._serialized_start = 88
     _METADATA._serialized_end = 238
     _METADATA_LABELSENTRY._serialized_start = 193
@@ -200,23 +214,25 @@ if _descriptor._USE_C_DESCRIPTORS == False:
     _TASKSTATUS._serialized_start = 316
     _TASKSTATUS._serialized_end = 375
     _TASK._serialized_start = 378
-    _TASK._serialized_end = 752
-    _CREATEREQUEST._serialized_start = 754
-    _CREATEREQUEST._serialized_end = 805
-    _CREATERESPONSE._serialized_start = 807
-    _CREATERESPONSE._serialized_end = 859
-    _GETREQUEST._serialized_start = 861
-    _GETREQUEST._serialized_end = 887
-    _GETRESPONSE._serialized_start = 889
-    _GETRESPONSE._serialized_end = 938
-    _UPDATEREQUEST._serialized_start = 940
-    _UPDATEREQUEST._serialized_end = 991
-    _UPDATERESPONSE._serialized_start = 993
-    _UPDATERESPONSE._serialized_end = 1045
-    _DELETEREQUEST._serialized_start = 1047
-    _DELETEREQUEST._serialized_end = 1076
-    _DELETERESPONSE._serialized_start = 1078
-    _DELETERESPONSE._serialized_end = 1094
-    _TASKSSERVICE._serialized_start = 1150
-    _TASKSSERVICE._serialized_end = 1455
+    _TASK._serialized_end = 597
+    _TASKINPUT._serialized_start = 599
+    _TASKINPUT._serialized_end = 710
+    _CREATEREQUEST._serialized_start = 712
+    _CREATEREQUEST._serialized_end = 763
+    _CREATERESPONSE._serialized_start = 765
+    _CREATERESPONSE._serialized_end = 817
+    _GETREQUEST._serialized_start = 819
+    _GETREQUEST._serialized_end = 845
+    _GETRESPONSE._serialized_start = 847
+    _GETRESPONSE._serialized_end = 896
+    _UPDATEREQUEST._serialized_start = 898
+    _UPDATEREQUEST._serialized_end = 949
+    _UPDATERESPONSE._serialized_start = 951
+    _UPDATERESPONSE._serialized_end = 1003
+    _DELETEREQUEST._serialized_start = 1005
+    _DELETEREQUEST._serialized_end = 1034
+    _DELETERESPONSE._serialized_start = 1036
+    _DELETERESPONSE._serialized_end = 1052
+    _TASKSSERVICE._serialized_start = 1108
+    _TASKSSERVICE._serialized_end = 1413
 # @@protoc_insertion_point(module_scope)
