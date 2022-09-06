@@ -36,7 +36,13 @@ message Task {
     TaskInput input = 4;
 
     TaskStatus status = 5;
-    tensorflow_federated.v0.Value result = 6;    
+    tensorflow_federated.v0.Value result = 6;
+
+    // group_nonce is used to distinguish tasks that should be handled by different clients.
+    // tasks with different group_nonce should not be handled by the same client whereas tasks
+    // with the same group_nonce may(should?) be processed by the same client.
+    // nonce is used to indicate that values should be chosen randomly and treated opaquely.
+    string group_nonce = 7;    
 }
 
 message TaskInput {
@@ -64,6 +70,23 @@ message GetResponse {
   Task task = 1;
 }
 
+message ListRequest {
+  // If specified only list the tasks assigned to this worker.
+  string worker_id = 1;
+
+  // If set only return tasks for which the status of the Done condition is True.
+  // If false return tasks for which Done condition is False or Unknown
+  bool done = 2;
+}
+
+message ListResponse {
+  repeated Task items = 1;
+}
+
+message Selector {
+  map<string, string> match_labels = 1;
+}
+
 message UpdateRequest {
   Task task = 1;
 }
@@ -83,6 +106,7 @@ message DeleteResponse {
 service TasksService {
   rpc Create (CreateRequest) returns (CreateResponse) {}
   rpc Get (GetRequest) returns (GetResponse) {}
+  rpc List (ListRequest) returns (ListResponse) {}
   rpc Update (UpdateRequest) returns (UpdateResponse) {}
   rpc Delete (DeleteRequest) returns (DeleteResponse) {}
 }

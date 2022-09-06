@@ -2,29 +2,7 @@ from concurrent import futures
 
 import grpc
 import portpicker
-import pytest
 from flaap import networking, taskstore_pb2, taskstore_pb2_grpc
-
-
-@pytest.mark.parametrize(
-    "conditions,expected",
-    [
-        ({"succeeded": taskstore_pb2.TRUE}, True),
-        ({"succeeded": taskstore_pb2.FALSE}, True),
-        ({"succeeded": taskstore_pb2.UNKNOWN}, False),
-        ({"other": taskstore_pb2.UNKNOWN}, False),
-        ({"other": taskstore_pb2.TRUE}, False),
-    ],
-)
-def test_is_done(conditions, expected):
-    task = taskstore_pb2.Task()
-    for k, v in conditions.items():
-        condition = taskstore_pb2.Condition()
-        condition.type = k
-        condition.status = v
-        task.status.conditions.append(condition)
-
-    assert networking.task_is_done(task) == expected
 
 
 class _TasksServicer(taskstore_pb2_grpc.TasksService):
@@ -43,13 +21,19 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
         return response
 
     def Create(self, request, context):
-        raise NotImplementedError()
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Create not implemented")
+        return taskstore_pb2.CreateResponse()
 
     def Delete(self, request, context):
-        raise NotImplementedError()
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Delete not implemented")
+        return taskstore_pb2.DeleteResponse()
 
     def Update(self, request, context):
-        raise NotImplementedError()
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Update not implemented")
+        return taskstore_pb2.UpdateResponse()
 
 
 def test_wait_for_task():

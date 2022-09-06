@@ -24,6 +24,7 @@ tidy-py:
 test-py:
 	pytest ./py
 
+.PHONY: protos
 protos:
 	./build_protos.sh
 

@@ -61,7 +61,7 @@ def test_create_call_no_arg():
     actual_task = executor._request_fn.request.task
 
     assert actual_task.metadata.name != ""
-
+    assert actual_task.group_nonce == executor.group_nonce
     assert actual_task.input.HasField("function")
     assert not actual_task.input.HasField("argument")
 
@@ -100,7 +100,7 @@ def test_create_call():
     actual_task = executor._request_fn.request.task
 
     assert actual_task.metadata.name != ""
-
+    assert actual_task.group_nonce == executor.group_nonce
     assert actual_task.input.HasField("function")
     assert actual_task.input.HasField("argument")
 
