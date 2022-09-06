@@ -4,7 +4,7 @@ from contextlib import closing
 
 import grpc
 import tenacity
-from flaap import taskstore_pb2
+from flaap import conditions, taskstore_pb2
 
 
 # TODO(jeremy): Should we just use the portpicker library like TFF
@@ -45,27 +45,11 @@ def wait_for_task(stub, task_name):
     request = taskstore_pb2.GetRequest(name=task_name)
     response = stub.Get(request)
 
-    if task_is_done(response.task):
+    if conditions.is_done(response.task):
         return response.task
     else:
         print(f"Do not submit task={response}")
         raise NotDoneException()
-
-
-def task_is_done(task: taskstore_pb2.Task) -> bool:
-    """Return true if the task has finished (whether successfully or unsuccessfully)
-
-    Tasks should follow the Knative convention of having a succeeded condition.
-    https://github.com/knative/specs/blob/main/specs/common/error-signalling.md
-
-    Returns:
-      True if the task is done and false otherwise.
-    """
-    for c in task.status.conditions:
-        if c.type.lower() != "succeeded":
-            continue
-        return c.status != taskstore_pb2.UNKNOWN
-    return False
 
 
 def _is_retryable_grpc_error(error):

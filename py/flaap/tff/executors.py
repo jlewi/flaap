@@ -11,6 +11,7 @@ from tensorflow_federated.python.common_libs import py_typecheck, tracing
 from tensorflow_federated.python.core.impl.executors import (
     executor_base,
     executor_value_base,
+    executors_errors,
 )
 from tensorflow_federated.python.core.impl.types import computation_types, placements
 
@@ -59,6 +60,15 @@ class TaskStoreExecutor(executor_base.Executor):
         # Allow injection for unittesting.
         self._request_fn = _request
 
+        # Generate a random nonce used to identify all the tasks created by this executor.
+        # This will be used to ensure they all get assigned to the same client and a single
+        # client doesn't claim more then its set of tasks.
+        self._group_nonce = uuid.uuid4().hex
+
+    @property
+    def group_nonce(self):
+        return self._group_nonce
+
     @property
     def is_ready(self) -> bool:
         return self._channel_status == grpc.ChannelConnectivity.READY
@@ -81,6 +91,12 @@ class TaskStoreExecutor(executor_base.Executor):
         # TODO(jeremy): What should we do this for request? Just ignore it? It doesn't look like its
         # imlemented for EagerTFExecutor so maybe we don't need it for this one either
         # https://github.com/tensorflow/federated/blob/6fa4137d5485c119560a6363c705b76aa29237b1/tensorflow_federated/python/core/impl/executors/eager_tf_executor.py#L584
+        #
+        # I blieve a placement is a mapping from a placement e.g. CLIENTS or SERVER to integer. I believe the integer
+        # is how many of that placement this executor handles; e.g. CLIENTS->N means this executor represents N clients.
+        # Presumably N > 1 implies the executor knows how to handle more than 1 client. In this case, how would it know which computations
+        # go to which executor? I suspect eager_tf_executor doesn't implement set_cardinalities because it is always a "leaf" executor
+        # and there is a 1:1 mapping from eager_tf_executors to clients.
         raise NotImplementedError(
             "set_cardinalities isn't implemented for TaskStoreExecutor"
         )
@@ -123,6 +139,7 @@ class TaskStoreExecutor(executor_base.Executor):
         task = taskstore_pb2.Task()
         task.metadata.name = uuid.uuid4().hex
         task.input.function.MergeFrom(comp_proto)
+        task.group_nonce = self._group_nonce
 
         if arg is not None:
             arg_proto, _ = executor_serialization.serialize_value(
@@ -165,6 +182,7 @@ class TaskStoreExecutor(executor_base.Executor):
         return value
 
 
+# TODO(jeremy): should we generalize this?
 @tracing.trace(span=True)
 def _request(rpc_func, request):
     """Populates trace context and reraises gRPC errors with retryable info."""
