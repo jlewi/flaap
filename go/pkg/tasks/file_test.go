@@ -17,8 +17,11 @@ import (
 )
 
 var (
-	taskComparer     = cmpopts.IgnoreFields(v1alpha1.Task{}, "state", "sizeCache", "unknownFields")
-	metadataComparer = cmpopts.IgnoreFields(v1alpha1.Metadata{}, "state", "sizeCache", "unknownFields")
+	taskComparer          = cmpopts.IgnoreFields(v1alpha1.Task{}, "state", "sizeCache", "unknownFields")
+	metadataComparer      = cmpopts.IgnoreFields(v1alpha1.Metadata{}, "state", "sizeCache", "unknownFields")
+	ignoreResourceVersion = cmpopts.IgnoreFields(v1alpha1.Metadata{}, "ResourceVersion")
+	statusComparer        = cmpopts.IgnoreFields(v1alpha1.TaskStatus{}, "state", "sizeCache", "unknownFields")
+	conditionComparer     = cmpopts.IgnoreFields(v1alpha1.Condition{}, "state", "sizeCache", "unknownFields")
 )
 
 func Test_NewFileStore(t *testing.T) {
@@ -60,7 +63,9 @@ func Test_NewFileStore(t *testing.T) {
 
 				e := json.NewEncoder(f)
 
-				if err := e.Encode(c.existingTasks); err != nil {
+				data := newStoredData(zapr.NewLogger(zap.L()))
+				data.Tasks = c.existingTasks
+				if err := e.Encode(data); err != nil {
 					t.Fatalf("Failed to serialize existing tasks to file: %v; error %v", fileName, err)
 				}
 				f.Close()
@@ -74,11 +79,11 @@ func Test_NewFileStore(t *testing.T) {
 
 			if c.existingTasks == nil {
 				if len(c.existingTasks) != 0 {
-					t.Errorf("Expected number of loaded tasks is wrong; Got %v; Want %v", s.tasks, c.existingTasks)
+					t.Errorf("Expected number of loaded tasks is wrong; Got %v; Want %v", s.data.Tasks, c.existingTasks)
 				}
 
 			} else {
-				if d := cmp.Diff(c.existingTasks, s.tasks, taskComparer); d != "" {
+				if d := cmp.Diff(c.existingTasks, s.data.Tasks, taskComparer); d != "" {
 					t.Errorf("Loaded tasks didn't match expected; diff:\n%v", d)
 				}
 			}
@@ -104,9 +109,10 @@ func newFileStore(t *testing.T) *FileStore {
 
 func Test_Create(t *testing.T) {
 	type testCase struct {
-		name string
-		task *v1alpha1.Task
-		code codes.Code
+		name               string
+		task               *v1alpha1.Task
+		code               codes.Code
+		expectedUnassigned bool
 	}
 
 	cases := []testCase{
@@ -117,8 +123,22 @@ func Test_Create(t *testing.T) {
 				Metadata: &v1alpha1.Metadata{
 					Name: "task1",
 				},
+				GroupNonce: "1234",
 			},
-			code: codes.OK,
+			expectedUnassigned: true,
+			code:               codes.OK,
+		},
+		{
+			name: "groupIsAssigned",
+			task: &v1alpha1.Task{
+				ApiVersion: "v1",
+				Metadata: &v1alpha1.Metadata{
+					Name: "task1",
+				},
+				GroupNonce: "1234",
+			},
+			expectedUnassigned: false,
+			code:               codes.OK,
 		},
 		{
 			name: "exists",
@@ -127,6 +147,7 @@ func Test_Create(t *testing.T) {
 				Metadata: &v1alpha1.Metadata{
 					Name: "task2",
 				},
+				GroupNonce: "1234",
 			},
 			code: codes.AlreadyExists,
 		},
@@ -136,6 +157,17 @@ func Test_Create(t *testing.T) {
 				ApiVersion: "v1",
 				Metadata: &v1alpha1.Metadata{
 					Name: "",
+				},
+				GroupNonce: "1234",
+			},
+			code: codes.InvalidArgument,
+		},
+		{
+			name: "nogroup",
+			task: &v1alpha1.Task{
+				ApiVersion: "v1",
+				Metadata: &v1alpha1.Metadata{
+					Name: "task2",
 				},
 			},
 			code: codes.InvalidArgument,
@@ -148,7 +180,12 @@ func Test_Create(t *testing.T) {
 
 			// Prepopulate the task if this test case is for already exists
 			if c.code == codes.AlreadyExists {
-				s.tasks[c.task.GetMetadata().GetName()] = c.task
+				s.data.Tasks[c.task.GetMetadata().GetName()] = c.task
+			}
+
+			// If this group is already supposed to be assigned set s.data accordingly
+			if !c.expectedUnassigned {
+				s.data.GroupToWorker[c.task.GetGroupNonce()] = "someworker"
 			}
 
 			task, createErr := s.Create(context.Background(), c.task)
@@ -171,13 +208,32 @@ func Test_Create(t *testing.T) {
 				t.Fatalf("Create didn't return non empty ResourceVersion")
 			}
 
+			// Ensure task is added to the group list
+			groupTasks := s.data.GroupToTaskNames[task.GroupNonce]
+
+			name := c.task.GetMetadata().GetName()
+			if groupTasks[len(groupTasks)-1] != name {
+				t.Errorf("task %v was not added to s.data.GroupToTaskNames[%v]", name, task.GroupNonce)
+			}
+
+			group := c.task.GroupNonce
+			// Ensure its added to the unassigned group or not depending on whether the group is already assigned
+			// to a worker.
+
+			// This task group is already assigned to a worker so it should not be in the unassigned group
+			assignedWorker := s.data.GroupToWorker[group]
+			actualUnassigned := assignedWorker == ""
+			if actualUnassigned != c.expectedUnassigned {
+				t.Errorf("Group %v presence in s.data.UnassignedGroups is wrong; Got %v; want %v", group, actualUnassigned, c.expectedUnassigned)
+			}
+
 			// ensure persistence
 			newS, err := NewFileStore(s.fileName, s.log)
 			if err != nil {
 				t.Fatalf("Failed to create filestore; error: %v", err)
 			}
 
-			if _, ok := newS.tasks[task.GetMetadata().GetName()]; !ok {
+			if _, ok := newS.data.Tasks[task.GetMetadata().GetName()]; !ok {
 				t.Fatalf("Create didn't persist tasks to file.")
 			}
 		})
@@ -186,10 +242,12 @@ func Test_Create(t *testing.T) {
 
 func Test_Update(t *testing.T) {
 	type testCase struct {
-		name         string
-		input        *v1alpha1.Task
-		existingTask *v1alpha1.Task
-		code         codes.Code
+		name          string
+		input         *v1alpha1.Task
+		worker        string
+		workerToGroup map[string]string
+		existingTask  *v1alpha1.Task
+		code          codes.Code
 	}
 
 	cases := []testCase{
@@ -200,6 +258,7 @@ func Test_Update(t *testing.T) {
 				Metadata: &v1alpha1.Metadata{
 					Name: "task1",
 				},
+				GroupNonce: "g1",
 			},
 			code: codes.OK,
 		},
@@ -212,6 +271,7 @@ func Test_Update(t *testing.T) {
 					Name:            "task2",
 					ResourceVersion: "1234",
 				},
+				GroupNonce: "g1",
 			},
 			existingTask: &v1alpha1.Task{
 				ApiVersion: "v1",
@@ -219,8 +279,35 @@ func Test_Update(t *testing.T) {
 					Name:            "task2",
 					ResourceVersion: "1234",
 				},
+				GroupNonce: "g1",
+			},
+			worker: "w1",
+			workerToGroup: map[string]string{
+				"w1": "g1",
 			},
 			code: codes.OK,
+		},
+		{
+			name: "exists-but-not-assigned-to-that-worker",
+			input: &v1alpha1.Task{
+				ApiVersion: "v1",
+				Kind:       "updatedField",
+				Metadata: &v1alpha1.Metadata{
+					Name:            "task2",
+					ResourceVersion: "1234",
+				},
+				GroupNonce: "g1",
+			},
+			existingTask: &v1alpha1.Task{
+				ApiVersion: "v1",
+				Metadata: &v1alpha1.Metadata{
+					Name:            "task2",
+					ResourceVersion: "1234",
+				},
+				GroupNonce: "g1",
+			},
+			worker: "w1",
+			code:   codes.FailedPrecondition,
 		},
 		{
 			name: "existsInvalidResourceVersion",
@@ -230,6 +317,7 @@ func Test_Update(t *testing.T) {
 					Name:            "task3",
 					ResourceVersion: "notamatch",
 				},
+				GroupNonce: "g1",
 			},
 			existingTask: &v1alpha1.Task{
 				ApiVersion: "v1",
@@ -237,6 +325,7 @@ func Test_Update(t *testing.T) {
 					Name:            "task3",
 					ResourceVersion: "1234",
 				},
+				GroupNonce: "g1",
 			},
 			code: codes.FailedPrecondition,
 		},
@@ -246,17 +335,20 @@ func Test_Update(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			s := newFileStore(t)
 
+			if c.workerToGroup != nil {
+				s.data.WorkerIdToGroupNonce = c.workerToGroup
+			}
 			// Prepopulate the task if this test case is for already exists
 			if c.existingTask != nil {
-				s.tasks[c.existingTask.GetMetadata().GetName()] = c.existingTask
+				s.data.Tasks[c.existingTask.GetMetadata().GetName()] = c.existingTask
 			}
 
-			task, updateErr := s.Update(context.Background(), c.input)
+			task, updateErr := s.Update(context.Background(), c.input, c.worker)
 
 			// Handle expected failures
 			actualCode := status.Code(updateErr)
 			if actualCode != c.code {
-				t.Fatalf("Update didn't return expected error code; Got %v; Want %v", actualCode, c.code)
+				t.Fatalf("Update didn't return expected error code; Got %v; Want %v; error %+v", actualCode, c.code, updateErr)
 			}
 
 			if c.code != codes.OK {
@@ -274,7 +366,7 @@ func Test_Update(t *testing.T) {
 			}
 
 			// Make sure the stored task actually got bumped as well.
-			if task.GetMetadata().GetResourceVersion() != s.tasks[task.GetMetadata().GetName()].GetMetadata().GetResourceVersion() {
+			if task.GetMetadata().GetResourceVersion() != s.data.Tasks[task.GetMetadata().GetName()].GetMetadata().GetResourceVersion() {
 				t.Fatalf("Update didn't bump ResourceVersion in stored task")
 			}
 
@@ -284,7 +376,7 @@ func Test_Update(t *testing.T) {
 				t.Fatalf("Failed to create filestore; error: %v", err)
 			}
 
-			if _, ok := newS.tasks[task.GetMetadata().GetName()]; !ok {
+			if _, ok := newS.data.Tasks[task.GetMetadata().GetName()]; !ok {
 				t.Fatalf("Update didn't persist tasks to file.")
 			}
 		})
@@ -323,7 +415,7 @@ func Test_Get(t *testing.T) {
 			// Prepopulate the task if this test case is for already exists
 			taskName := c.task.GetMetadata().GetName()
 			if c.task != nil {
-				s.tasks[c.task.GetMetadata().GetName()] = c.task
+				s.data.Tasks[c.task.GetMetadata().GetName()] = c.task
 			} else {
 				// Generate a random taskName to fetch since we want to test task not found
 				taskName = "nonExistentTask"
@@ -355,9 +447,10 @@ func Test_Get(t *testing.T) {
 
 func Test_Delete(t *testing.T) {
 	type testCase struct {
-		name string
-		task *v1alpha1.Task
-		code codes.Code
+		name            string
+		task            *v1alpha1.Task
+		code            codes.Code
+		existingNameMap map[string][]string
 	}
 
 	cases := []testCase{
@@ -368,6 +461,21 @@ func Test_Delete(t *testing.T) {
 				Metadata: &v1alpha1.Metadata{
 					Name: "task1",
 				},
+				GroupNonce: "g1",
+			},
+			code: codes.OK,
+		},
+		{
+			name: "ok-deletetasksnames",
+			task: &v1alpha1.Task{
+				ApiVersion: "v1",
+				Metadata: &v1alpha1.Metadata{
+					Name: "task1",
+				},
+				GroupNonce: "g1",
+			},
+			existingNameMap: map[string][]string{
+				"g1": {"task0", "task1", "task2"},
 			},
 			code: codes.OK,
 		},
@@ -381,10 +489,16 @@ func Test_Delete(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			s := newFileStore(t)
 
+			expectedLen := -1
+			if c.existingNameMap != nil {
+				s.data.GroupToTaskNames = c.existingNameMap
+				expectedLen = len(c.existingNameMap[c.task.GroupNonce]) - 1
+			}
+
 			// Prepopulate the task if this test case is for already exists
 			taskName := c.task.GetMetadata().GetName()
 			if c.task != nil {
-				s.tasks[taskName] = c.task
+				s.data.Tasks[taskName] = c.task
 			}
 
 			deleteErr := s.Delete(context.Background(), taskName)
@@ -405,18 +519,136 @@ func Test_Delete(t *testing.T) {
 			}
 
 			// Ensure it actually got deleted.
-			if _, ok := s.tasks[taskName]; ok {
+			if _, ok := s.data.Tasks[taskName]; ok {
 				t.Fatalf("Task was not actually deleted")
 			}
 
+			// Make sure the task got removed from the group to task name map
+			if c.existingNameMap != nil {
+				actualNames := s.data.GroupToTaskNames[c.task.GroupNonce]
+				if len(actualNames) != expectedLen {
+					t.Errorf("len(s.data.GroupToTaskNames[%v] Got %v; want %v", c.task.GroupNonce, len(actualNames), expectedLen)
+				}
+
+				for _, n := range actualNames {
+					if n == c.task.GetMetadata().GetName() {
+						t.Errorf("s.data.GroupToTaskNames contains %v but it should have been deleted", c.task.GetMetadata().GetName())
+					}
+				}
+			}
 			// ensure persistence
 			newS, err := NewFileStore(s.fileName, s.log)
 			if err != nil {
 				t.Fatalf("Failed to create filestore; error: %v", err)
 			}
 
-			if _, ok := newS.tasks[taskName]; ok {
+			if _, ok := newS.data.Tasks[taskName]; ok {
 				t.Fatalf("Delete didn't persist deletion to file.")
+			}
+		})
+	}
+}
+
+func newTask(name string, group string, done v1alpha1.StatusCondition) *v1alpha1.Task {
+	t := &v1alpha1.Task{
+		Metadata: &v1alpha1.Metadata{
+			Name: name,
+		},
+		GroupNonce: group,
+		Status: &v1alpha1.TaskStatus{
+			Conditions: []*v1alpha1.Condition{
+				{
+					Type:   SUCCEEDED_CONDITION,
+					Status: done,
+				},
+			},
+		},
+	}
+	return t
+}
+
+func Test_List(t *testing.T) {
+	type testCase struct {
+		name          string
+		workerId      string
+		includeDone   bool
+		GroupToWorker map[string]string
+		tasks         []*v1alpha1.Task
+		expected      []*v1alpha1.Task
+	}
+
+	cases := []testCase{
+		{
+			name:        "unassigned-group-exclude-done",
+			workerId:    "worker1",
+			includeDone: false,
+			GroupToWorker: map[string]string{
+				"group2": "worker2",
+			},
+			tasks: []*v1alpha1.Task{
+				newTask("t1", "group1", v1alpha1.StatusCondition_UNKNOWN),
+				newTask("t2", "group1", v1alpha1.StatusCondition_TRUE),
+				newTask("t3", "group2", v1alpha1.StatusCondition_TRUE),
+			},
+			expected: []*v1alpha1.Task{
+				newTask("t1", "group1", v1alpha1.StatusCondition_UNKNOWN),
+			},
+		},
+		{
+			name:        "unassigned-group-include-done",
+			workerId:    "worker1",
+			includeDone: true,
+			GroupToWorker: map[string]string{
+				"group2": "worker2",
+			},
+			tasks: []*v1alpha1.Task{
+				newTask("t1", "group1", v1alpha1.StatusCondition_UNKNOWN),
+				newTask("t2", "group1", v1alpha1.StatusCondition_TRUE),
+				newTask("t3", "group2", v1alpha1.StatusCondition_TRUE),
+			},
+			expected: []*v1alpha1.Task{
+				newTask("t1", "group1", v1alpha1.StatusCondition_UNKNOWN),
+				newTask("t2", "group1", v1alpha1.StatusCondition_TRUE),
+			},
+		},
+		{
+			name:        "no-unassigned-group",
+			workerId:    "worker1",
+			includeDone: true,
+			GroupToWorker: map[string]string{
+				"group2": "worker2",
+			},
+			tasks: []*v1alpha1.Task{
+				newTask("t3", "group2", v1alpha1.StatusCondition_TRUE),
+			},
+			expected: []*v1alpha1.Task{},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newFileStore(t)
+
+			// Create existing assignments
+			for g, w := range c.GroupToWorker {
+				s.data.AssignGroup(g, w)
+			}
+
+			// Create tasks
+			for _, task := range c.tasks {
+				if _, err := s.Create(context.Background(), task); err != nil {
+					t.Fatalf("Failed to create task: %v", task.GetMetadata().GetName())
+				}
+			}
+
+			items, err := s.List(context.Background(), c.workerId, c.includeDone)
+
+			if err != nil {
+				t.Fatalf("List failed; error:%v", err)
+			}
+
+			if d := cmp.Diff(c.expected, items, taskComparer, metadataComparer, ignoreResourceVersion, statusComparer, conditionComparer); d != "" {
+				t.Errorf("Didn't get expected tasks; diff:\n%v", d)
 			}
 		})
 	}

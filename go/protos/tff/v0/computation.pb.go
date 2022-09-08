@@ -7,11 +7,12 @@
 package v0
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -490,10 +491,10 @@ func (*Computation_Xla) isComputation_Computation() {}
 // variant structure simple, and we let the set of all valid type nestings be
 // determined by the set of the currently supported operators. The current
 // limitations on nesting are as follows:
-// - FederatedType and FunctionType cannot be nested within a FederatedType or
-//   within a SequenceType. Currently, these may only be nested within a
-//   StructType.
-// - A SequenceType currently cannot be nested within another SequenceType.
+//   - FederatedType and FunctionType cannot be nested within a FederatedType or
+//     within a SequenceType. Currently, these may only be nested within a
+//     StructType.
+//   - A SequenceType currently cannot be nested within another SequenceType.
 type Type struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

@@ -32,6 +32,11 @@ func (s *Server) Get(ctx context.Context, req *v1alpha1.GetRequest) (*v1alpha1.G
 	return &v1alpha1.GetResponse{Task: t}, err
 }
 
+func (s *Server) List(ctx context.Context, req *v1alpha1.ListRequest) (*v1alpha1.ListResponse, error) {
+	tasks, err := s.tasks.List(ctx, req.GetWorkerId(), req.GetDone())
+	return &v1alpha1.ListResponse{Items: tasks}, err
+}
+
 func (s *Server) Update(ctx context.Context, req *v1alpha1.UpdateRequest) (*v1alpha1.UpdateResponse, error) {
 	t, err := s.tasks.Create(ctx, req.GetTask())
 	return &v1alpha1.UpdateResponse{Task: t}, err
