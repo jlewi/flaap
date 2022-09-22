@@ -2,9 +2,10 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"sync"
+
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/jlewi/p22h/backend/pkg/logging"
 
@@ -43,14 +44,35 @@ func NewFileStore(fileName string, log logr.Logger) (*FileStore, error) {
 
 	if _, err := os.Stat(fileName); err == nil {
 		log.Info("Restoring tasks from file", "file", fileName)
-		f, err := os.Open(fileName)
+		b, err := os.ReadFile(fileName)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Failed to open file: %v", fileName)
+			return nil, errors.Wrapf(err, "Failed to read file: %v", fileName)
 		}
 
-		d := json.NewDecoder(f)
-		if err := d.Decode(s.data); err != nil {
+		data := &v1alpha1.StoredData{}
+
+		if err := protojson.Unmarshal(b, data); err != nil {
 			return nil, errors.Wrapf(err, "Failed to desirialize map of tasks from file %v", fileName)
+		}
+
+		for _, t := range data.GetTasks() {
+			s.data.Tasks[t.GetMetadata().GetName()] = t
+			group := t.GetGroupNonce()
+			if _, ok := s.data.GroupToTaskNames[group]; !ok {
+				s.data.GroupToTaskNames[group] = []string{}
+			}
+			s.data.GroupToTaskNames[group] = append(s.data.GroupToTaskNames[group], t.GetMetadata().GetName())
+		}
+
+		if data.GetGroupAssignments() != nil {
+			s.data.GroupToWorker = data.GetGroupAssignments()
+
+			for g, w := range s.data.GroupToWorker {
+				s.data.WorkerIdToGroupNonce[w] = g
+			}
+		} else {
+			s.data.GroupToWorker = map[string]string{}
+			s.data.WorkerIdToGroupNonce = map[string]string{}
 		}
 	}
 
@@ -140,6 +162,7 @@ func (s *FileStore) Update(ctx context.Context, t *v1alpha1.Task, worker string)
 
 	old := s.data.Tasks[name]
 	if old.GetMetadata().GetResourceVersion() != t.GetMetadata().GetResourceVersion() {
+		s.log.Info("Task update failed; resourceversion doesn't match", "task", name, "want", old.GetMetadata().GetResourceVersion(), "got", t.GetMetadata().GetResourceVersion())
 		return t, status.Errorf(codes.FailedPrecondition, "ResourceVersion doesn't match; want %v; got %v", old.GetMetadata().GetResourceVersion(), t.GetMetadata().GetResourceVersion())
 	}
 
@@ -148,6 +171,7 @@ func (s *FileStore) Update(ctx context.Context, t *v1alpha1.Task, worker string)
 	// and claim tasks they aren't assigned
 	expected, ok := s.data.WorkerIdToGroupNonce[worker]
 	if !ok || expected != old.GetGroupNonce() {
+		s.log.Info("Task update failed; task not assigned to worker", "worker", worker, "task", name)
 		return t, status.Errorf(codes.FailedPrecondition, "Worker %v can't update task %v; this task has not been assigned to that worker", worker, name)
 	}
 
@@ -221,7 +245,7 @@ func (s *FileStore) List(ctx context.Context, workerId string, includeDone bool)
 	}
 
 	if group == "" {
-		s.log.Info("No unassigned groups", "workerId")
+		s.log.Info("Can't assign group to worker; no unassigned groups", "workerId", workerId)
 		return []*v1alpha1.Task{}, nil
 	}
 
@@ -248,16 +272,57 @@ func (s *FileStore) List(ctx context.Context, workerId string, includeDone bool)
 	return results, nil
 }
 
+// Status returns status information about the taskstore.
+// N.B this method blocks other updates and is potentially expensive.
+func (s *FileStore) Status(ctx context.Context, req *v1alpha1.StatusRequest) (*v1alpha1.StatusResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	resp := &v1alpha1.StatusResponse{
+		GroupAssignments: make(map[string]string),
+	}
+
+	// TODO(jeremy): Is there a more efficient way to copy this data?
+	for g, w := range s.data.GroupToWorker {
+		resp.GroupAssignments[g] = w
+	}
+
+	resp.TaskMetrics = map[string]int32{}
+
+	for n := range v1alpha1.StatusCondition_value {
+		resp.TaskMetrics[n] = 0
+	}
+
+	for _, t := range s.data.Tasks {
+		done := GetCondition(t, SUCCEEDED_CONDITION)
+		resp.TaskMetrics[done.String()] = resp.TaskMetrics[done.String()] + 1
+	}
+	return resp, nil
+}
+
 // persistNoLock persists the data to the file. The caller is responsible for acquiring the lock.
 func (s *FileStore) persistNoLock() error {
 	f, err := os.Create(s.fileName)
 	defer DeferIgnoreError(f.Close)
-
 	if err != nil {
 		return errors.Wrapf(err, "Failed to create file %v", s.fileName)
 	}
-	e := json.NewEncoder(f)
-	if err := e.Encode(s.data); err != nil {
+
+	data := &v1alpha1.StoredData{}
+	data.Tasks = make([]*v1alpha1.Task, 0, len(s.data.Tasks))
+
+	for _, t := range s.data.Tasks {
+		data.Tasks = append(data.Tasks, t)
+	}
+
+	data.GroupAssignments = s.data.GroupToWorker
+
+	b, err := protojson.Marshal(data)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to marshal data to serialize")
+	}
+
+	if _, err := f.Write(b); err != nil {
 		return errors.Wrapf(err, "Failed to serialize tasks to file: %v", s.fileName)
 	}
 

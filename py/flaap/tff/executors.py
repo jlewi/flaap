@@ -33,7 +33,7 @@ class TaskStoreExecutor(executor_base.Executor):
     Unlike the remote executor it doesn't batch requests to delete remote values but maybe it should.
     """
 
-    def __init__(self, channel):
+    def __init__(self, device=None, channel=None):
         """Creates a new instance of this executor.
         Args:
           channel: An instance of `grpc.Channel` to use for communication with the
@@ -138,20 +138,20 @@ class TaskStoreExecutor(executor_base.Executor):
 
         task = taskstore_pb2.Task()
         task.metadata.name = uuid.uuid4().hex
-        task.input.function.MergeFrom(comp_proto)
+        task.input.function = comp_proto.SerializeToString()
         task.group_nonce = self._group_nonce
 
         if arg is not None:
             arg_proto, _ = executor_serialization.serialize_value(
                 arg.value, arg.type_spec
             )
-            task.input.argument.MergeFrom(arg_proto)
+            task.input.argument = arg_proto.SerializeToString()
 
         create_task_request = taskstore_pb2.CreateRequest(task=task)
 
         response = self._request_fn(self._stub.Create, create_task_request)
         py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
-        return TaskValue(response.task.metadata.name, type_spec, self)
+        return TaskValue(response.task.metadata.name, type_spec.result, self)
 
     @tracing.trace(span=True)
     async def create_struct(self, elements):
@@ -178,7 +178,9 @@ class TaskStoreExecutor(executor_base.Executor):
     async def _compute(self, name):
         """Compute waits for a given task to complete and then returns its value"""
         task = networking.wait_for_task(self._stub, name)
-        value, _ = executor_serialization.deserialize_value(task.result)
+        value_pb = executor_pb2.Value()
+        value_pb.ParseFromString(task.result)
+        value, _ = executor_serialization.deserialize_value(value_pb)
         return value
 
 
@@ -234,6 +236,7 @@ class TaskInputValue(executor_value_base.ExecutorValue):
             "Compute is not expected to be called on TaskInputValue"
         )
 
+    @property
     def type_signature(self):
         return self.type_spec
 

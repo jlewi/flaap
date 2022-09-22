@@ -2,10 +2,13 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path"
 	"testing"
+
+	v0 "github.com/jlewi/flaap/go/protos/tff/v0"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/go-logr/zapr"
 	"github.com/google/go-cmp/cmp"
@@ -17,11 +20,15 @@ import (
 )
 
 var (
-	taskComparer          = cmpopts.IgnoreFields(v1alpha1.Task{}, "state", "sizeCache", "unknownFields")
-	metadataComparer      = cmpopts.IgnoreFields(v1alpha1.Metadata{}, "state", "sizeCache", "unknownFields")
-	ignoreResourceVersion = cmpopts.IgnoreFields(v1alpha1.Metadata{}, "ResourceVersion")
-	statusComparer        = cmpopts.IgnoreFields(v1alpha1.TaskStatus{}, "state", "sizeCache", "unknownFields")
-	conditionComparer     = cmpopts.IgnoreFields(v1alpha1.Condition{}, "state", "sizeCache", "unknownFields")
+	taskComparer           = cmpopts.IgnoreFields(v1alpha1.Task{}, "state", "sizeCache", "unknownFields")
+	taskInputComparer      = cmpopts.IgnoreFields(v1alpha1.TaskInput{}, "state", "sizeCache", "unknownFields")
+	anyComparer            = cmpopts.IgnoreFields(anypb.Any{}, "state", "sizeCache", "unknownFields")
+	metadataComparer       = cmpopts.IgnoreFields(v1alpha1.Metadata{}, "state", "sizeCache", "unknownFields")
+	ignoreResourceVersion  = cmpopts.IgnoreFields(v1alpha1.Metadata{}, "ResourceVersion")
+	valueComparer          = cmpopts.IgnoreFields(v0.Value{}, "state", "sizeCache", "unknownFields")
+	statusComparer         = cmpopts.IgnoreFields(v1alpha1.TaskStatus{}, "state", "sizeCache", "unknownFields")
+	conditionComparer      = cmpopts.IgnoreFields(v1alpha1.Condition{}, "state", "sizeCache", "unknownFields")
+	statusResponseComparer = cmpopts.IgnoreFields(v1alpha1.StatusResponse{}, "state", "sizeCache", "unknownFields")
 )
 
 func Test_NewFileStore(t *testing.T) {
@@ -42,6 +49,12 @@ func Test_NewFileStore(t *testing.T) {
 				"task1": {
 					ApiVersion: "v1",
 					Kind:       "task",
+					Metadata: &v1alpha1.Metadata{
+						Name: "task1",
+					},
+					Input: &v1alpha1.TaskInput{
+						Function: []byte("1234abcd"),
+					},
 				},
 			},
 		},
@@ -61,11 +74,19 @@ func Test_NewFileStore(t *testing.T) {
 					t.Fatalf("Failed to create file: %v, error %v", fileName, err)
 				}
 
-				e := json.NewEncoder(f)
+				data := &v1alpha1.StoredData{
+					Tasks: []*v1alpha1.Task{},
+				}
+				for _, t := range c.existingTasks {
+					data.Tasks = append(data.Tasks, t)
+				}
 
-				data := newStoredData(zapr.NewLogger(zap.L()))
-				data.Tasks = c.existingTasks
-				if err := e.Encode(data); err != nil {
+				b, err := protojson.Marshal(data)
+
+				if err != nil {
+					t.Fatalf("Failed to marshal StoredData; error: %v", err)
+				}
+				if _, err := f.Write(b); err != nil {
 					t.Fatalf("Failed to serialize existing tasks to file: %v; error %v", fileName, err)
 				}
 				f.Close()
@@ -83,7 +104,7 @@ func Test_NewFileStore(t *testing.T) {
 				}
 
 			} else {
-				if d := cmp.Diff(c.existingTasks, s.data.Tasks, taskComparer); d != "" {
+				if d := cmp.Diff(c.existingTasks, s.data.Tasks, taskComparer, metadataComparer, taskInputComparer, valueComparer, anyComparer); d != "" {
 					t.Errorf("Loaded tasks didn't match expected; diff:\n%v", d)
 				}
 			}
@@ -648,6 +669,68 @@ func Test_List(t *testing.T) {
 			}
 
 			if d := cmp.Diff(c.expected, items, taskComparer, metadataComparer, ignoreResourceVersion, statusComparer, conditionComparer); d != "" {
+				t.Errorf("Didn't get expected tasks; diff:\n%v", d)
+			}
+		})
+	}
+}
+
+func Test_Status(t *testing.T) {
+	type testCase struct {
+		name          string
+		GroupToWorker map[string]string
+		tasks         []*v1alpha1.Task
+		expected      *v1alpha1.StatusResponse
+	}
+
+	cases := []testCase{
+		{
+			name: "basic",
+			GroupToWorker: map[string]string{
+				"group2": "worker2",
+			},
+			tasks: []*v1alpha1.Task{
+				newTask("t1", "group1", v1alpha1.StatusCondition_UNKNOWN),
+				newTask("t2", "group1", v1alpha1.StatusCondition_TRUE),
+				newTask("t3", "group2", v1alpha1.StatusCondition_TRUE),
+			},
+			expected: &v1alpha1.StatusResponse{
+				GroupAssignments: map[string]string{
+					"group2": "worker2",
+					"group1": "",
+				},
+				TaskMetrics: map[string]int32{
+					v1alpha1.StatusCondition_UNKNOWN.String(): 1,
+					v1alpha1.StatusCondition_TRUE.String():    2,
+					v1alpha1.StatusCondition_FALSE.String():   0,
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newFileStore(t)
+
+			// Create existing assignments
+			for g, w := range c.GroupToWorker {
+				s.data.AssignGroup(g, w)
+			}
+
+			// Create tasks
+			for _, task := range c.tasks {
+				if _, err := s.Create(context.Background(), task); err != nil {
+					t.Fatalf("Failed to create task: %v", task.GetMetadata().GetName())
+				}
+			}
+
+			actual, err := s.Status(context.Background(), &v1alpha1.StatusRequest{})
+
+			if err != nil {
+				t.Fatalf("Status failed; error:%v", err)
+			}
+
+			if d := cmp.Diff(c.expected, actual, statusResponseComparer); d != "" {
 				t.Errorf("Didn't get expected tasks; diff:\n%v", d)
 			}
 		})

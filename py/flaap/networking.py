@@ -48,7 +48,6 @@ def wait_for_task(stub, task_name):
     if conditions.is_done(response.task):
         return response.task
     else:
-        print(f"Do not submit task={response}")
         raise NotDoneException()
 
 

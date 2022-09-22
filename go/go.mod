@@ -3,6 +3,7 @@ module github.com/jlewi/flaap/go
 go 1.17
 
 require (
+	github.com/go-cmd/cmd v1.4.1
 	github.com/go-logr/logr v1.2.3
 	github.com/go-logr/zapr v1.2.3
 	github.com/google/go-cmp v0.5.7

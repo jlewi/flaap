@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package flaap.v1alpha1;
 
-import "tensorflow_federated/proto/v0/executor.proto";
-
 option go_package = "github.com/jlewi/flaap/go/protos/v1alpha1";
 
 message Metadata {
@@ -36,7 +34,9 @@ message Task {
     TaskInput input = 4;
 
     TaskStatus status = 5;
-    tensorflow_federated.v0.Value result = 6;
+    // Result is a serialized tensorflow_federated.v0.Value 
+    // Its serialized so that Tasks can be deserialized without depending on the Value proto.
+    bytes result = 6;
 
     // group_nonce is used to distinguish tasks that should be handled by different clients.
     // tasks with different group_nonce should not be handled by the same client whereas tasks
@@ -48,10 +48,12 @@ message Task {
 message TaskInput {
   // The value represents the function to be executed. It is the result of tracing
   // the code annotated with tf.computation and turning it into an AST.
-  tensorflow_federated.v0.Value function = 1;
+  // function is a serialized tensorflow_federated.v0.Value 
+  bytes function = 1;
 
   // Optional the argument to be passed to the function
-  tensorflow_federated.v0.Value argument = 2;
+  // function is a serialized tensorflow_federated.v0.Value 
+  bytes argument = 2;
 }
 
 message CreateRequest {
@@ -91,6 +93,11 @@ message Selector {
 
 message UpdateRequest {
   Task task = 1;
+  // Id of the worker sending the request. Used to verify that only that assigned worker updates the task.
+  // Update departs from K8s convention because we need to provide the ID of the worker issuing the update
+	// request. In principle that should be sent via a sidechannel (e.g. as part of Authn)  so it wouldn't
+	// be in the body of the request.
+  string worker_id = 2;
 }
 
 message UpdateResponse {
@@ -104,6 +111,17 @@ message DeleteRequest {
 message DeleteResponse {
 }
 
+message StatusRequest{  
+}
+
+message StatusResponse {
+  // Groups assigned to workers.
+  map<string, string> group_assignments = 1;
+
+  // Count of the number of tasks keyed by the status.
+  map<string, int32> task_metrics = 2;
+}
+
 // Tasks CRUD service
 service TasksService {
   rpc Create (CreateRequest) returns (CreateResponse) {}
@@ -111,4 +129,13 @@ service TasksService {
   rpc List (ListRequest) returns (ListResponse) {}
   rpc Update (UpdateRequest) returns (UpdateResponse) {}
   rpc Delete (DeleteRequest) returns (DeleteResponse) {}
+  // Status is used to monitor the status of the task service.
+  rpc Status (StatusRequest) returns (StatusResponse) {}
+}
+
+
+// StoredData is used to serialize the data inside the filestore.
+message StoredData {
+  repeated Task tasks = 1;
+  map<string, string> group_assignments = 2;
 }
