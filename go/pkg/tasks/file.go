@@ -6,6 +6,8 @@ import (
 	"os"
 	"sync"
 
+	"github.com/jlewi/p22h/backend/pkg/logging"
+
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
@@ -17,9 +19,8 @@ import (
 // FileStore is a simple implementation of the TaskInterface which uses a file for persistence.
 // FileStore is intended to be a non-performant, non-scalable reference implementation.
 type FileStore struct {
-	log logr.Logger
-	// In memory storage of the tasks
-	tasks map[string]*v1alpha1.Task
+	log  logr.Logger
+	data *StoredData
 	// File to back up to.
 	fileName string
 
@@ -37,7 +38,7 @@ func NewFileStore(fileName string, log logr.Logger) (*FileStore, error) {
 	s := &FileStore{
 		log:      log,
 		fileName: fileName,
-		tasks:    map[string]*v1alpha1.Task{},
+		data:     newStoredData(log),
 	}
 
 	if _, err := os.Stat(fileName); err == nil {
@@ -48,7 +49,7 @@ func NewFileStore(fileName string, log logr.Logger) (*FileStore, error) {
 		}
 
 		d := json.NewDecoder(f)
-		if err := d.Decode(&s.tasks); err != nil {
+		if err := d.Decode(s.data); err != nil {
 			return nil, errors.Wrapf(err, "Failed to desirialize map of tasks from file %v", fileName)
 		}
 	}
@@ -68,13 +69,34 @@ func (s *FileStore) Create(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Tas
 		return t, status.Errorf(codes.InvalidArgument, "name is required")
 	}
 
-	if _, ok := s.tasks[t.GetMetadata().GetName()]; ok {
-		return t, status.Errorf(codes.AlreadyExists, "Task with name %v; already exists; use Update to make changes", t.GetMetadata().GetName())
+	name := t.GetMetadata().GetName()
+	group := t.GetGroupNonce()
+
+	if group == "" {
+		return t, status.Errorf(codes.InvalidArgument, "group nonce is required")
+	}
+
+	if _, ok := s.data.Tasks[name]; ok {
+		return t, status.Errorf(codes.AlreadyExists, "Task with name %v; already exists; use Update to make changes", name)
 	}
 
 	// Generate a unique resourceVersion
 	t.Metadata.ResourceVersion = uuid.New().String()
-	s.tasks[t.GetMetadata().GetName()] = t
+	s.data.Tasks[name] = t
+
+	if g, ok := s.data.GroupToTaskNames[group]; ok {
+		// We have seen this group before
+		s.log.V(logging.Debug).Info("Adding task to group", "task", name, "group", group)
+		s.data.GroupToTaskNames[group] = append(g, name)
+	} else {
+		s.data.GroupToTaskNames[group] = []string{name}
+	}
+
+	if _, ok := s.data.GroupToWorker[group]; !ok {
+		s.log.V(logging.Debug).Info("Creating new, unassigned task group", "task", name, "group", group)
+		s.data.GroupToWorker[group] = ""
+	}
+
 	err := s.persistNoLock()
 	return t, err
 }
@@ -87,7 +109,7 @@ func (s *FileStore) Get(ctx context.Context, name string) (*v1alpha1.Task, error
 	if name == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name is required")
 	}
-	t, ok := s.tasks[name]
+	t, ok := s.data.Tasks[name]
 
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "Task %v not found", name)
@@ -96,23 +118,51 @@ func (s *FileStore) Get(ctx context.Context, name string) (*v1alpha1.Task, error
 	return t, nil
 }
 
-// Update the specified task. If the task doesn't exist it will be created.
-func (s *FileStore) Update(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Task, error) {
+// Update the specified task. If the task doesn't exist it will be created
+func (s *FileStore) Update(ctx context.Context, t *v1alpha1.Task, worker string) (*v1alpha1.Task, error) {
+	name := t.GetMetadata().GetName()
+	exists := func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		_, exists := s.data.Tasks[name]
+		return exists
+	}()
+
+	// If task doesn't exist create it
+	if !exists {
+		if worker != "" {
+			return t, status.Errorf(codes.FailedPrecondition, "Update non-existing task %v failed. When update is used to create new tasks worker should not be set because workers are not expected to create tasks", t.GetMetadata().GetName())
+		}
+		return s.Create(ctx, t)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	name := t.GetMetadata().GetName()
 
-	// If task exists check resourceVersion
-	if old, ok := s.tasks[name]; ok {
-		if old.GetMetadata().GetResourceVersion() != t.GetMetadata().GetResourceVersion() {
-			return t, status.Errorf(codes.FailedPrecondition, "ResourceVersion doesn't match; want %v; got %v", old.GetMetadata().GetResourceVersion(), t.GetMetadata().GetResourceVersion())
-		}
+	old := s.data.Tasks[name]
+	if old.GetMetadata().GetResourceVersion() != t.GetMetadata().GetResourceVersion() {
+		return t, status.Errorf(codes.FailedPrecondition, "ResourceVersion doesn't match; want %v; got %v", old.GetMetadata().GetResourceVersion(), t.GetMetadata().GetResourceVersion())
 	}
+
+	// Make sure this worker has been assigned to this task otherwise fail this update.
+	// NB. We check worker id against the old group because we don't want the clients to be able to change the group id
+	// and claim tasks they aren't assigned
+	expected, ok := s.data.WorkerIdToGroupNonce[worker]
+	if !ok || expected != old.GetGroupNonce() {
+		return t, status.Errorf(codes.FailedPrecondition, "Worker %v can't update task %v; this task has not been assigned to that worker", worker, name)
+	}
+
+	// Check immutable fields
+	if t.GetGroupNonce() != old.GetGroupNonce() {
+		return t, status.Errorf(codes.FailedPrecondition, "Group nonce is immutable")
+	}
+
+	// TODO(jeremy) We should verify TaskInput hasn't changed
 
 	// Bump resourceVersion
 	t.GetMetadata().ResourceVersion = uuid.New().String()
 
-	s.tasks[name] = t
+	s.data.Tasks[name] = t
+
 	err := s.persistNoLock()
 	return t, err
 }
@@ -122,13 +172,80 @@ func (s *FileStore) Delete(ctx context.Context, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.tasks[name]; !ok {
+	old, ok := s.data.Tasks[name]
+
+	if !ok {
 		return nil
 	}
 
-	delete(s.tasks, name)
+	delete(s.data.Tasks, name)
+
+	if groupTasks, ok := s.data.GroupToTaskNames[old.GetGroupNonce()]; ok {
+		cap := len(groupTasks) - 1
+		if cap < 0 {
+			cap = 0
+		}
+		newTasks := make([]string, 0, cap)
+
+		for _, n := range groupTasks {
+			if n != name {
+				newTasks = append(newTasks, n)
+			}
+		}
+
+		s.data.GroupToTaskNames[old.GetGroupNonce()] = newTasks
+	}
 	err := s.persistNoLock()
 	return err
+}
+
+// List returns tasks for this worker. If the worker isn't already assigned a task group
+// one is assigned.
+func (s *FileStore) List(ctx context.Context, workerId string, includeDone bool) ([]*v1alpha1.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	group, ok := s.data.WorkerIdToGroupNonce[workerId]
+	log := s.log.WithValues("workerId", workerId)
+	if !ok || group == "" {
+		// Check for unassigned group
+		for k, v := range s.data.GroupToWorker {
+			if v == "" {
+				log.Info("Assigning worker to group", "group", k)
+				group = k
+				s.data.GroupToWorker[group] = workerId
+				s.data.WorkerIdToGroupNonce[workerId] = group
+				break
+			}
+		}
+	}
+
+	if group == "" {
+		s.log.Info("No unassigned groups", "workerId")
+		return []*v1alpha1.Task{}, nil
+	}
+
+	names, ok := s.data.GroupToTaskNames[group]
+
+	if !ok {
+		return []*v1alpha1.Task{}, status.Errorf(codes.Internal, "Group %v had no tasks listed", group)
+	}
+
+	results := []*v1alpha1.Task{}
+
+	for _, n := range names {
+		t, ok := s.data.Tasks[n]
+		if !ok {
+			return []*v1alpha1.Task{}, status.Errorf(codes.Internal, "Task %v is listed in group %v but not found in task store", n, group)
+		}
+
+		// Only include the task if either we include done takss or the task isn't done
+		if includeDone || !IsDone(t) {
+			results = append(results, t)
+		}
+	}
+
+	return results, nil
 }
 
 // persistNoLock persists the data to the file. The caller is responsible for acquiring the lock.
@@ -140,9 +257,45 @@ func (s *FileStore) persistNoLock() error {
 		return errors.Wrapf(err, "Failed to create file %v", s.fileName)
 	}
 	e := json.NewEncoder(f)
-	if err := e.Encode(s.tasks); err != nil {
+	if err := e.Encode(s.data); err != nil {
 		return errors.Wrapf(err, "Failed to serialize tasks to file: %v", s.fileName)
 	}
 
 	return nil
+}
+
+// StoredData represents all the data to be stored and serialized in the file.
+// TODO(jeremy): Should we make this a proto?
+type StoredData struct {
+	log logr.Logger
+	// the tasks
+	Tasks map[string]*v1alpha1.Task
+
+	// Group to worker is a mapping from groups to workers; empty means its unassigned.
+	// It is the inverse of WorkerIdToGroupNonce
+	GroupToWorker map[string]string
+
+	// Mapping from a worker id to the group nonce
+	WorkerIdToGroupNonce map[string]string
+
+	// Should we make this a list of only incomplete tasks?
+	GroupToTaskNames map[string][]string
+}
+
+// AssignGroup Assigns the group to the worker. Overrides existing assignments
+func (s *StoredData) AssignGroup(group string, workerId string) {
+	s.GroupToWorker[group] = workerId
+	s.WorkerIdToGroupNonce[workerId] = group
+}
+
+func newStoredData(log logr.Logger) *StoredData {
+	return &StoredData{
+		log:                  log,
+		Tasks:                map[string]*v1alpha1.Task{},
+		GroupToWorker:        map[string]string{},
+		WorkerIdToGroupNonce: map[string]string{},
+		// GroupToTaskNames is a mapping from a group to tasks in that group.
+		// Makes it easy to lookup tasks for a given worker.
+		GroupToTaskNames: map[string][]string{},
+	}
 }

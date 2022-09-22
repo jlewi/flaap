@@ -11,6 +11,10 @@ import (
 type TaskInterface interface {
 	Create(ctx context.Context, task *v1alpha1.Task) (*v1alpha1.Task, error)
 	Get(ctx context.Context, name string) (*v1alpha1.Task, error)
-	Update(ctx context.Context, task *v1alpha1.Task) (*v1alpha1.Task, error)
+	// Update departs from K8s convention because we need to provide the ID of the worker issuing the udpate
+	// request. In principle that should be sent via a sidechannel (e.g. as part of Authn)  so it wouldn't
+	// be in the body of the request.
+	Update(ctx context.Context, task *v1alpha1.Task, worker string) (*v1alpha1.Task, error)
 	Delete(ctx context.Context, name string) error
+	List(ctx context.Context, workerId string, includeDone bool) ([]*v1alpha1.Task, error)
 }

@@ -76,6 +76,8 @@ message ListRequest {
 
   // If set only return tasks for which the status of the Done condition is True.
   // If false return tasks for which Done condition is False or Unknown
+  // TODO(jeremy): The naming/design is akward. The intent is to be able to filter tasks by the done condition so that we can only request tasks
+  // which aren't done
   bool done = 2;
 }
 
