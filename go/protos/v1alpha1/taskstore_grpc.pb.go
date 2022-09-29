@@ -28,6 +28,8 @@ type TasksServiceClient interface {
 	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error)
 	Update(ctx context.Context, in *UpdateRequest, opts ...grpc.CallOption) (*UpdateResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	// Status is used to monitor the status of the task service.
+	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 }
 
 type tasksServiceClient struct {
@@ -83,6 +85,15 @@ func (c *tasksServiceClient) Delete(ctx context.Context, in *DeleteRequest, opts
 	return out, nil
 }
 
+func (c *tasksServiceClient) Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, "/flaap.v1alpha1.TasksService/Status", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TasksServiceServer is the server API for TasksService service.
 // All implementations must embed UnimplementedTasksServiceServer
 // for forward compatibility
@@ -92,6 +103,8 @@ type TasksServiceServer interface {
 	List(context.Context, *ListRequest) (*ListResponse, error)
 	Update(context.Context, *UpdateRequest) (*UpdateResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
+	// Status is used to monitor the status of the task service.
+	Status(context.Context, *StatusRequest) (*StatusResponse, error)
 	mustEmbedUnimplementedTasksServiceServer()
 }
 
@@ -113,6 +126,9 @@ func (UnimplementedTasksServiceServer) Update(context.Context, *UpdateRequest) (
 }
 func (UnimplementedTasksServiceServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedTasksServiceServer) Status(context.Context, *StatusRequest) (*StatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
 }
 func (UnimplementedTasksServiceServer) mustEmbedUnimplementedTasksServiceServer() {}
 
@@ -217,6 +233,24 @@ func _TasksService_Delete_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TasksService_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TasksServiceServer).Status(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/flaap.v1alpha1.TasksService/Status",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TasksServiceServer).Status(ctx, req.(*StatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TasksService_ServiceDesc is the grpc.ServiceDesc for TasksService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -243,6 +277,10 @@ var TasksService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _TasksService_Delete_Handler,
+		},
+		{
+			MethodName: "Status",
+			Handler:    _TasksService_Status_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

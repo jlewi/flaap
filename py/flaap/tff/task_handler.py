@@ -6,6 +6,7 @@ import fire
 import grpc
 import tenacity
 from flaap import conditions, taskstore_pb2, taskstore_pb2_grpc
+from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.common_libs import tracing
 from tensorflow_federated.python.core.impl.executors import (
     eager_tf_executor,
@@ -44,18 +45,20 @@ class TaskHandler:
         """
         logging.info("Handling task: %s", task.metadata.name)
         # Desiralize the value proto into a value and type.
+        function_pb = executor_pb2.Value()
+        function_pb.ParseFromString(task.input.function)
         function_value, function_value_type = value_serialization.deserialize_value(
-            task.input.function
+            function_pb
         )
 
         eager_value = await self._executor.create_value(
             function_value, function_value_type
         )
         eager_arg = None
-        if task.input.HasField("argument"):
-            arg_value, arg_type = value_serialization.deserialize_value(
-                task.input.argument
-            )
+        if task.input.argument:
+            argument_pb = executor_pb2.Value()
+            argument_pb.ParseFromString(task.input.argument)
+            arg_value, arg_type = value_serialization.deserialize_value(argument_pb)
 
             eager_arg = await self._executor.create_value(arg_value, arg_type)
         eager_result = await self._executor.create_call(eager_value, eager_arg)
@@ -64,7 +67,7 @@ class TaskHandler:
         result_val = await eager_result.compute()
         val_type = eager_result.type_signature
         value_proto, _ = value_serialization.serialize_value(result_val, val_type)
-        task.result.MergeFrom(value_proto)
+        task.result = value_proto.SerializeToString()
 
         conditions.set(task, conditions.SUCCEEDED, taskstore_pb2.TRUE)
         return task
@@ -84,7 +87,7 @@ class TaskHandler:
         response = _run_rpc(self._tasks_stub.List, request)
 
         if len(response.items) == 0:
-            logging.info("No available tass")
+            logging.info("No available tasks")
             await asyncio.sleep(self._polling_interval)
             return 0
 
@@ -98,6 +101,7 @@ class TaskHandler:
 
         update_request = taskstore_pb2.UpdateRequest()
         update_request.task.MergeFrom(new_task)
+        update_request.worker_id = self._worker_id
 
         # TODO(jeremy): We should add appropriate error and retry handling.
         response = _run_rpc(self._tasks_stub.Update, update_request)
@@ -105,7 +109,7 @@ class TaskHandler:
 
     async def run(self):
         """Periodically poll the taskstore for tasks and process them"""
-        logging.info("Starting polling loop")
+        logging.info("Starting polling loop; worker_id=%s", self._worker_id)
         while True:
             await self._poll_and_handle_task()
 

@@ -6,6 +6,7 @@ import tensorflow as tf
 import tensorflow_federated
 from flaap import taskstore_pb2
 from flaap.tff import executors
+from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.impl.computation import computation_impl
 from tensorflow_federated.python.core.impl.tensorflow_context import (
@@ -62,12 +63,12 @@ def test_create_call_no_arg():
 
     assert actual_task.metadata.name != ""
     assert actual_task.group_nonce == executor.group_nonce
-    assert actual_task.input.HasField("function")
-    assert not actual_task.input.HasField("argument")
+    assert len(actual_task.input.function) > 0
+    assert len(actual_task.input.argument) == 0
 
-    _, actual_comp_type = executor_serialization.deserialize_value(
-        actual_task.input.function
-    )
+    function_pb = executor_pb2.Value()
+    function_pb.ParseFromString(actual_task.input.function)
+    _, actual_comp_type = executor_serialization.deserialize_value(function_pb)
 
     py_typecheck.check_type(actual_comp_type, computation_types.FunctionType)
 
@@ -101,18 +102,18 @@ def test_create_call():
 
     assert actual_task.metadata.name != ""
     assert actual_task.group_nonce == executor.group_nonce
-    assert actual_task.input.HasField("function")
-    assert actual_task.input.HasField("argument")
+    assert len(actual_task.input.function) > 0
+    assert len(actual_task.input.argument) > 0
 
-    _, actual_comp_type = executor_serialization.deserialize_value(
-        actual_task.input.function
-    )
+    function_pb = executor_pb2.Value()
+    function_pb.ParseFromString(actual_task.input.function)
+    _, actual_comp_type = executor_serialization.deserialize_value(function_pb)
 
     py_typecheck.check_type(actual_comp_type, computation_types.FunctionType)
 
-    _, actual_arg_type = executor_serialization.deserialize_value(
-        actual_task.input.argument
-    )
+    arg_pb = executor_pb2.Value()
+    arg_pb.ParseFromString(actual_task.input.argument)
+    _, actual_arg_type = executor_serialization.deserialize_value(arg_pb)
     py_typecheck.check_type(actual_arg_type, computation_types.TensorType)
 
 
@@ -122,7 +123,7 @@ def test_compute(wait_for_task):
     result, _ = executor_serialization.serialize_value(10, tf.int32)
 
     task = taskstore_pb2.Task()
-    task.result.MergeFrom(result)
+    task.result = result.SerializeToString()
     wait_for_task.return_value = task
 
     channel = mock.MagicMock(spec=grpc.Channel)

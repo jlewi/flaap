@@ -7,6 +7,7 @@ import portpicker
 import tensorflow as tf
 from flaap import conditions, taskstore_pb2, taskstore_pb2_grpc
 from flaap.tff import task_handler
+from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.core.impl.computation import computation_impl
 from tensorflow_federated.python.core.impl.executors import value_serialization
 from tensorflow_federated.python.core.impl.tensorflow_context import (
@@ -22,14 +23,19 @@ def test_handle_task():
     computation = computation_impl.ConcreteComputation.get_proto(comp)
 
     task = taskstore_pb2.Task()
-    task.input.function.computation.MergeFrom(computation)
+    function_pb = executor_pb2.Value()
+    function_pb.computation.MergeFrom(computation)
+    task.input.function = function_pb.SerializeToString()
 
     handler = task_handler.TaskHandler(mock.MagicMock())
     asyncio.run(handler._handle_task(task))
 
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    result_value, result_value_type = value_serialization.deserialize_value(task.result)
+    result_pb = executor_pb2.Value()
+    result_pb.ParseFromString(task.result)
+
+    result_value, result_value_type = value_serialization.deserialize_value(result_pb)
     assert result_value == 1000
 
 
@@ -41,16 +47,21 @@ def test_handle_task_with_arg():
     computation = computation_impl.ConcreteComputation.get_proto(comp)
 
     task = taskstore_pb2.Task()
-    task.input.function.computation.MergeFrom(computation)
+
+    function_pb = executor_pb2.Value()
+    function_pb.computation.MergeFrom(computation)
+    task.input.function = function_pb.SerializeToString()
 
     argument, _ = value_serialization.serialize_value(3, tf.int32)
-    task.input.argument.MergeFrom(argument)
+    task.input.argument = argument.SerializeToString()
 
     handler = task_handler.TaskHandler(mock.MagicMock())
     asyncio.run(handler._handle_task(task))
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    result_value, result_value_type = value_serialization.deserialize_value(task.result)
+    result_pb = executor_pb2.Value()
+    result_pb.ParseFromString(task.result)
+    result_value, result_value_type = value_serialization.deserialize_value(result_pb)
     assert result_value == 5
 
 
@@ -91,6 +102,8 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
 
     def Update(self, request, context):
         self._tasks[request.task.metadata.name] = request.task
+        # Store worker_id for verification
+        self._update_worker_id = request.worker_id
         return taskstore_pb2.UpdateResponse(task=request.task)
 
 
@@ -129,6 +142,8 @@ def test_poll_and_handle_task_success(handle_task_fn):
         assert list_request.worker_id == handler._worker_id
         assert list_request.done == False
 
+        # Make sure update request contains worker_id
+        assert servicer._update_worker_id == handler._worker_id
         # Make sure test is correctly maked as done
         actual_task = servicer._tasks["task1"]
         assert conditions.get(actual_task, conditions.SUCCEEDED) == taskstore_pb2.TRUE

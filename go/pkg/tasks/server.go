@@ -38,11 +38,16 @@ func (s *Server) List(ctx context.Context, req *v1alpha1.ListRequest) (*v1alpha1
 }
 
 func (s *Server) Update(ctx context.Context, req *v1alpha1.UpdateRequest) (*v1alpha1.UpdateResponse, error) {
-	t, err := s.tasks.Create(ctx, req.GetTask())
+	t, err := s.tasks.Update(ctx, req.GetTask(), req.GetWorkerId())
 	return &v1alpha1.UpdateResponse{Task: t}, err
 }
 
 func (s *Server) Delete(ctx context.Context, req *v1alpha1.DeleteRequest) (*v1alpha1.DeleteResponse, error) {
 	err := s.tasks.Delete(ctx, req.GetName())
 	return &v1alpha1.DeleteResponse{}, err
+}
+
+func (s *Server) Status(ctx context.Context, req *v1alpha1.StatusRequest) (*v1alpha1.StatusResponse, error) {
+	status, err := s.tasks.Status(ctx, req)
+	return status, err
 }
