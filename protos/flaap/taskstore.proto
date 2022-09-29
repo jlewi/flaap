@@ -31,8 +31,9 @@ message Task {
  
     Metadata metadata = 3;
 
-    TaskInput input = 4;
-
+    // TODO(https://github.com/jlewi/flaap/issues/22): Get rid of this
+    TaskInput input = 14;
+          
     TaskStatus status = 5;
     // Result is a serialized tensorflow_federated.v0.Value 
     // Its serialized so that Tasks can be deserialized without depending on the Value proto.
@@ -54,6 +55,32 @@ message TaskInput {
   // Optional the argument to be passed to the function
   // function is a serialized tensorflow_federated.v0.Value 
   bytes argument = 2;
+
+  // ExecutorRequest encodes the request proto in 
+    // https://github.com/tensorflow/federated/blob/a6506385def304c260a424b29e5b34c6d905760e/tensorflow_federated/proto/v0/executor.proto
+    // The serialized version of the proto is stored as bytes.
+    // The reason for storing the seralized proto as bytes rather than using a typed field is because using a typed field
+    // would require generating the TFF protos client libraries in whichever language we use (e.g GoLang). That would be better
+    // but for now we punted on trying to plugging into TFF's build process to build golang protos. 
+  oneof request {
+    bytes create_value = 4;
+    bytes create_call = 5;
+    bytes create_struct = 6;
+    bytes create_selection = 7;
+    bytes compute = 8;
+    bytes dispose = 9;
+  } 
+}
+
+message TaskOutput {
+ oneof response {
+    bytes create_value = 1;
+    bytes create_call = 2;
+    bytes create_struct = 3;
+    bytes create_selection = 4;
+    bytes compute = 5;
+    bytes dispose = 6;
+  } 
 }
 
 message CreateRequest {
