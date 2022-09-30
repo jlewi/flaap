@@ -150,7 +150,7 @@ def test_compute(wait_for_task):
     # that _compute issues.
     response = taskstore_pb2.CreateResponse()
     response.task.metadata.name = "returnedname"
-    response.task.output.compute.value = result.SerializeToString()
+    response.task.output.compute = result.SerializeToString()
 
     fake = FakeRequestFn(response)
     executor._request_fn = fake

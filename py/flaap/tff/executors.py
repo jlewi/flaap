@@ -208,7 +208,7 @@ class TaskStoreExecutor(executor_base.Executor):
         task.metadata.name = uuid.uuid4().hex        
         task.group_nonce = self._group_nonce
 
-        task.request.compute = request.SerializeToString()
+        task.input.compute = request.SerializeToString()
 
         create_task_request = taskstore_pb2.CreateRequest(task=task)
 
@@ -218,7 +218,7 @@ class TaskStoreExecutor(executor_base.Executor):
         # TODO(jeremy): We should probably verify task actually succeeded
         task = networking.wait_for_task(self._stub, task.metadata.name)
         value_pb = executor_pb2.Value()
-        value_pb.ParseFromString(task.result)
+        value_pb.ParseFromString(task.output.compute)
         value, _ = executor_serialization.deserialize_value(value_pb)
         return value
 
