@@ -65,6 +65,7 @@ class TaskStoreExecutor(executor_base.Executor):
         # client doesn't claim more then its set of tasks.
         self._group_nonce = uuid.uuid4().hex
 
+        #self._executor_id = self._group
     @property
     def group_nonce(self):
         return self._group_nonce
@@ -112,10 +113,34 @@ class TaskStoreExecutor(executor_base.Executor):
     @tracing.trace(span=True)
     async def create_value(self, value, type_spec=None):
         """Create value creates the value in the executor"""
-        # Creating the value is a nullop. The value is returned
-        # so that the caller will pass it along to create_call where it will
-        # be serialized as part of the Task.
-        return TaskInputValue(value, type_spec)
+        # TODO(jlewi): The remote executor sets the executor id. Is that something we need to do?
+        # https://github.com/tensorflow/federated/blob/0cde95aebfda9751a95c23a1e4c8e5482778658c/tensorflow_federated/python/core/impl/executors/remote_executor.py#L152
+        # self._check_has_executor_id()
+
+        # Create a CreateValueRequest to store the request we want the worker to execute
+        @tracing.trace
+        def serialize_value():
+            return value_serialization.serialize_value(value, type_spec)
+
+        value_proto, type_spec = serialize_value()
+
+        # Do we need to set an executor_id? The RemoteExecutor does. What should it be
+        create_value_request = executor_pb2.CreateValueRequest(
+            value=value_proto)
+        
+        # Now wrap the CreateValueRequest in a task.
+        task = taskstore_pb2.Task()
+        task.metadata.name = uuid.uuid4().hex
+        task.input.create_value = create_value_request.SerializeToString()
+        task.group_nonce = self._group_nonce
+
+        # Create the task.
+        create_task_request = taskstore_pb2.CreateRequest(task=task)
+        response = self._request_fn(self._stub.Create, create_task_request)
+        py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
+
+        # Create a reference to this value using the task name
+        return TaskValue(response.task.metadata.name, type_spec, self)
 
     @tracing.trace(span=True)
     async def create_call(self, comp, arg=None):
@@ -127,31 +152,31 @@ class TaskStoreExecutor(executor_base.Executor):
           computation: A value representing the AST to be run
           arg: Optional the value to be passed to the computation
         """
-
-        py_typecheck.check_type(comp, TaskInputValue)
+        py_typecheck.check_type(comp, TaskValue)        
         # Comp needs to represent a function type as it is supposed to define the operations
         # to be run
-        comp_proto, type_spec = executor_serialization.serialize_value(
-            comp.value, comp.type_spec
-        )
-        py_typecheck.check_type(type_spec, computation_types.FunctionType)
+        py_typecheck.check_type(comp.type_signature, computation_types.FunctionType)
+        
+        if arg is not None:
+            py_typecheck.check_type(arg, TaskValue)
+
+        # Create a CreateCallRequest proto to represent the request to process        
+        create_call_request = executor_pb2.CreateCallRequest(
+            function_ref=comp.value_ref(),
+            argument_ref=(arg.value_ref() if arg is not None else None))
 
         task = taskstore_pb2.Task()
         task.metadata.name = uuid.uuid4().hex
-        task.input.function = comp_proto.SerializeToString()
+        task.input.create_call = create_call_request.SerializeToString()
         task.group_nonce = self._group_nonce
 
-        if arg is not None:
-            arg_proto, _ = executor_serialization.serialize_value(
-                arg.value, arg.type_spec
-            )
-            task.input.argument = arg_proto.SerializeToString()
-
+        # Create the task.
         create_task_request = taskstore_pb2.CreateRequest(task=task)
-
         response = self._request_fn(self._stub.Create, create_task_request)
         py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
-        return TaskValue(response.task.metadata.name, type_spec.result, self)
+        
+        # Create a reference to this value using the task name
+        return TaskValue(response.task.metadata.name, comp.type_signature.result, self)
 
     @tracing.trace(span=True)
     async def create_struct(self, elements):
@@ -176,8 +201,22 @@ class TaskStoreExecutor(executor_base.Executor):
 
     @tracing.trace(span=True)
     async def _compute(self, name):
-        """Compute waits for a given task to complete and then returns its value"""
-        task = networking.wait_for_task(self._stub, name)
+        """Compute waits for a given task to complete and then returns its value"""        
+        request = executor_pb2.ComputeRequest(value_ref= executor_pb2.ValueRef(id=name))
+    
+        task = taskstore_pb2.Task()
+        task.metadata.name = uuid.uuid4().hex        
+        task.group_nonce = self._group_nonce
+
+        task.request.compute = request.SerializeToString()
+
+        create_task_request = taskstore_pb2.CreateRequest(task=task)
+
+        response = self._request_fn(self._stub.Create, create_task_request)
+        py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
+
+        # TODO(jeremy): We should probably verify task actually succeeded
+        task = networking.wait_for_task(self._stub, task.metadata.name)
         value_pb = executor_pb2.Value()
         value_pb.ParseFromString(task.result)
         value, _ = executor_serialization.deserialize_value(value_pb)
@@ -216,6 +255,8 @@ def _is_retryable_grpc_error(error):
     return isinstance(error, grpc.RpcError) and error.code() not in non_retryable_errors
 
 
+# TODO(https://github.com/jlewi/flaap/issues/22): I don't think this should be needed
+# anymore
 class TaskInputValue(executor_value_base.ExecutorValue):
     """TaskInputValue is a wrapper around TFF values used for the output of create_value.
 
@@ -246,11 +287,7 @@ class TaskValue(executor_value_base.ExecutorValue):
 
     Inspired by: https://github.com/tensorflow/federated/blob/54ae7836c593746e3dd9a3ccfe74f61d46005c5c/tensorflow_federated/python/core/impl/executors/remote_executor.py#L163
 
-    The main purpose of this is to handle cleanup following the pattern used by the
-    RemoteExecutor. When the executor creates a Task in the taskstore to
-    represent a value it returns an instance of RemoteValueTask. When that
-    RemoteValueTask python object is deleted this should trigger a delete
-    request for the task.
+    This allows the coordinator to refer to executions stored in the worker.
     """
 
     def __init__(self, name: str, type_spec, executor):
@@ -286,3 +323,7 @@ class TaskValue(executor_value_base.ExecutorValue):
     @property
     def name(self):
         return self._name
+
+    def value_ref(self):
+        """Return a ValueRef proto representing this task"""
+        return executor_pb2.ValueRef(id=self._name)

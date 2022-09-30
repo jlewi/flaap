@@ -30,23 +30,26 @@ message Task {
     string kind = 2;    
  
     Metadata metadata = 3;
+    
+    TaskInput input = 4;
+    TaskOutput output = 5;
+    TaskStatus status = 6;
 
-    // TODO(https://github.com/jlewi/flaap/issues/22): Get rid of this
-    TaskInput input = 14;
-          
-    TaskStatus status = 5;
     // Result is a serialized tensorflow_federated.v0.Value 
     // Its serialized so that Tasks can be deserialized without depending on the Value proto.
-    bytes result = 6;
+    // TODO(https://github.com/jlewi/flaap/issues/22): Get rid of result field.
+    bytes result = 7;
 
     // group_nonce is used to distinguish tasks that should be handled by different clients.
     // tasks with different group_nonce should not be handled by the same client whereas tasks
     // with the same group_nonce may(should?) be processed by the same client.
     // nonce is used to indicate that values should be chosen randomly and treated opaquely.
-    string group_nonce = 7;    
+    string group_nonce = 8;
 }
 
 message TaskInput {
+  // TODO(https://github.com/jlewi/flaap/issues/22): Get rid of function and argument fields.
+  // 
   // The value represents the function to be executed. It is the result of tracing
   // the code annotated with tf.computation and turning it into an AST.
   // function is a serialized tensorflow_federated.v0.Value 
