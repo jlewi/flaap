@@ -95,7 +95,7 @@ class StatefulWrapper:
       value: Value to create
     """    
     # Pass actual value along to the executor
-    result = self._target_executor.create_value(value, type_spec)
+    result = await self._target_executor.create_value(value, type_spec)
 
     # Cache the result using the supplied name
     self._values[name] = result
@@ -115,8 +115,11 @@ class StatefulWrapper:
       arg = self._values[arg_name]
     # Create_call creates a callable. We invoke that callable to
     # produce the result which we cache
-    callable = self._target_executor.create_call(comp, arg)
-    self._values[name] = await callable()
+    value = await self._target_executor.create_call(comp, arg)    
+
+    # Invoke compute in order to get the actual value.
+    # N.B. We don't wait for a Compute request to materialize the value
+    self._values[name] = await value.compute()
 
   @tracing.trace(span=True)
   async def create_struct(self, name, element_names):
@@ -138,8 +141,7 @@ class StatefulWrapper:
     self._values[name] = self._target_executor.create_selection(source, index)
 
   def get_value(self, name):
-    """Return the specified value"""
-    raise NotImplementedError("I don't think this will work. I think the values will be futures and will need to be awaited")
+    """Return the specified value"""    
     return self._values[name]
 
 
