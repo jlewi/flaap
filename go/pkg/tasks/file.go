@@ -106,6 +106,7 @@ func (s *FileStore) Create(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Tas
 	t.Metadata.ResourceVersion = uuid.New().String()
 	s.data.Tasks[name] = t
 
+	s.log.Info("Creating task", "task", name)
 	if g, ok := s.data.GroupToTaskNames[group]; ok {
 		// We have seen this group before
 		s.log.V(logging.Debug).Info("Adding task to group", "task", name, "group", group)

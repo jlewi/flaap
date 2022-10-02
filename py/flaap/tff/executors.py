@@ -2,6 +2,7 @@ import uuid
 import weakref
 from typing import Mapping
 
+import logging
 import grpc
 import tensorflow_federated
 from absl import logging
@@ -135,6 +136,7 @@ class TaskStoreExecutor(executor_base.Executor):
         task.group_nonce = self._group_nonce
 
         # Create the task.
+        logging.info("Creating task %s to create value", task.metadata.name)
         create_task_request = taskstore_pb2.CreateRequest(task=task)
         response = self._request_fn(self._stub.Create, create_task_request)
         py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
@@ -157,18 +159,21 @@ class TaskStoreExecutor(executor_base.Executor):
         # to be run
         py_typecheck.check_type(comp.type_signature, computation_types.FunctionType)
         
+        arg_name = ""
         if arg is not None:
             py_typecheck.check_type(arg, TaskValue)
-
+            arg_name = arg.value_ref().id
         # Create a CreateCallRequest proto to represent the request to process        
         create_call_request = executor_pb2.CreateCallRequest(
             function_ref=comp.value_ref(),
             argument_ref=(arg.value_ref() if arg is not None else None))
-
+        
         task = taskstore_pb2.Task()
         task.metadata.name = uuid.uuid4().hex
         task.input.create_call = create_call_request.SerializeToString()
         task.group_nonce = self._group_nonce
+        
+        logging.info("Creating task %s to create call; comp %s arg %s", task.metadata.name, comp.value_ref().id, arg_name)
 
         # Create the task.
         create_task_request = taskstore_pb2.CreateRequest(task=task)
