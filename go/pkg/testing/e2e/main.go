@@ -58,6 +58,9 @@ func newRootCmd() *cobra.Command {
 	root := rootDir()
 	defaultServer := filepath.Join(root, ".build", "server")
 	rootCmd.PersistentFlags().StringVarP(&runner.taskStore, "taskstore", "", defaultServer, "Path to the task store binary")
+	// TODO(jeremy): Cleanup isn't very useful because once the program exits we won't continue to stream the logs of the subprocess
+	// to files which makes them harder to debug. It would be better to keep the main program running and then trap sigterm
+	// and kill the subprocesses.
 	rootCmd.PersistentFlags().BoolVarP(&runner.cleanup, "cleanup", "", true, "Whether to cleanup when the test ends")
 	rootCmd.PersistentFlags().StringVarP(&level, "level", "", "info", "The logging level.")
 	rootCmd.PersistentFlags().BoolVarP(&jsonLog, "json-logs", "", true, "Enable json logging.")
