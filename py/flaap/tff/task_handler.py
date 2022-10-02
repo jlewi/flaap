@@ -42,11 +42,12 @@ class TaskHandler:
         """
         logging.info("Handling task: %s", task.metadata.name)
 
-        if task.input.HasField("create_value"):
+        if task.input.HasField("create_value"):            
             request = executor_pb2.CreateValueRequest()
             request.ParseFromString(task.input.create_value)
 
             value, value_type = value_serialization.deserialize_value(request.value)
+            logging.info("Create value %s", task.metadata.name)
             await self._wrapper.create_value(task.metadata.name, value, value_type)
 
         elif task.input.HasField("create_call"):
@@ -56,6 +57,7 @@ class TaskHandler:
             arg_name = None
             if request.HasField("argument_ref"):
                 arg_name = request.argument_ref.id
+            logging.info("Create call %s; comp=%s arg=%s", task.metadata.name, comp_name, arg_name)
             await self._wrapper.create_call(task.metadata.name, comp_name, arg_name)
         elif task.input.HasField("compute"):
             request = executor_pb2.ComputeRequest()
