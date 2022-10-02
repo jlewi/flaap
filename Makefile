@@ -52,7 +52,7 @@ e2e: build-go build-e2e
 	PYTHONPATH=$(ROOT)/py .build/e2e \
 		--taskstore=$(ROOT)/.build/server \
 		--json-logs=false --level=debug \
-		--port=8081
+		--port=8081 --cleanup=false
 
 
 # Cleanup e2e processes

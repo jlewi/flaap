@@ -58,6 +58,7 @@ func newRootCmd() *cobra.Command {
 	root := rootDir()
 	defaultServer := filepath.Join(root, ".build", "server")
 	rootCmd.PersistentFlags().StringVarP(&runner.taskStore, "taskstore", "", defaultServer, "Path to the task store binary")
+	rootCmd.PersistentFlags().BoolVarP(&runner.cleanup, "cleanup", "", true, "Whether to cleanup when the test ends")
 	rootCmd.PersistentFlags().StringVarP(&level, "level", "", "info", "The logging level.")
 	rootCmd.PersistentFlags().BoolVarP(&jsonLog, "json-logs", "", true, "Enable json logging.")
 	rootCmd.PersistentFlags().StringVarP(&runner.logsDir, "logs-dir", "", defaultLogsDir, "Directory where logs should be written.")
@@ -73,6 +74,7 @@ type Runner struct {
 	level     string
 	port      int
 
+	cleanup  bool
 	logFiles map[string]*os.File
 
 	// Keep track of all the commands so we can close them.
@@ -134,15 +136,20 @@ func (r *Runner) Run() error {
 		log.Error(err, "test didn't run successfully")
 	}
 
-	log.Info("Cleaning up the e2e tests.")
-	// Stop all the subprocesses
-	for name, c := range r.cmds {
-		// Null op if already stopped
-		log.Info("Stopping subprocess", "process", name)
-		if err := c.Stop(); err != nil {
-			log.Error(err, "Error stopping subprocess", "process", name)
+	if r.cleanup {
+		log.Info("Cleaning up the e2e tests.")
+		// Stop all the subprocesses
+		for name, c := range r.cmds {
+			// Null op if already stopped
+			log.Info("Stopping subprocess", "process", name)
+			if err := c.Stop(); err != nil {
+				log.Error(err, "Error stopping subprocess", "process", name)
+			}
 		}
+	} else {
+		log.Info("Skipping cleaing up the e2e tests.")
 	}
+
 	return nil
 }
 
