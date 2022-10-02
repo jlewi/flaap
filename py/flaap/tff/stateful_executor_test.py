@@ -35,7 +35,8 @@ def test_call():
                            computation_types.FunctionType(None, tf.int32)))
 
   asyncio.run(wrapper.create_call("result", "somefunc"))
-  assert wrapper.get_value("result") == 1000
+  result = asyncio.run(wrapper.get_value("result").compute())
+  assert result == 1000
 
 
 def test_call_with_arg():  
@@ -55,4 +56,5 @@ def test_call_with_arg():
   asyncio.run(wrapper.create_value("somearg", 10, tf.int32))
 
   asyncio.run(wrapper.create_call("result", "somefunc", "somearg"))
-  assert wrapper.get_value("result") == 1010
+  result = asyncio.run(wrapper.get_value("result").compute())
+  assert result == 1010

@@ -13,9 +13,10 @@ from tensorflow_federated.python.core.impl.executors import value_serialization
 from tensorflow_federated.python.core.impl.tensorflow_context import (
     tensorflow_computation,
 )
+from tensorflow_federated.python.core.impl.types import computation_types
+import pytest
 
-
-def test_handle_task():
+def test_handle_task_create_value():
     @tensorflow_computation.tf_computation
     def comp():
         return 1000
@@ -23,46 +24,77 @@ def test_handle_task():
     computation = computation_impl.ConcreteComputation.get_proto(comp)
 
     task = taskstore_pb2.Task()
-    function_pb = executor_pb2.Value()
-    function_pb.computation.MergeFrom(computation)
-    task.input.function = function_pb.SerializeToString()
+    
+    value = executor_pb2.Value(computation=computation)
+    create_request = executor_pb2.CreateValueRequest(value=value)
+    task.metadata.name = "somefunc"
+    task.input.create_value = create_request.SerializeToString()
 
     handler = task_handler.TaskHandler(mock.MagicMock())
     asyncio.run(handler._handle_task(task))
 
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    result_pb = executor_pb2.Value()
-    result_pb.ParseFromString(task.result)
-
-    result_value, result_value_type = value_serialization.deserialize_value(result_pb)
-    assert result_value == 1000
+    # Ensure the value is stored
+    stored = handler._wrapper._values["somefunc"]
+    assert  stored.type_signature == computation_types.FunctionType(None, tf.int32)
 
 
-def test_handle_task_with_arg():
+def test_handle_task_create_call():
+    @tensorflow_computation.tf_computation
+    def comp():
+        return 1000
+
+    handler = task_handler.TaskHandler(mock.MagicMock())
+
+    # Embed the function in the wrapper
+    asyncio.run(
+      handler._wrapper.create_value("somefunc", comp,
+                           computation_types.FunctionType(None, tf.int32)))
+
+    task = taskstore_pb2.Task()
+        
+    call_request = executor_pb2.CreateCallRequest(function_ref=executor_pb2.ValueRef(id="somefunc"))
+    task.metadata.name = "result"
+    task.input.create_call = call_request.SerializeToString()
+
+    
+    asyncio.run(handler._handle_task(task))
+
+    assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
+
+    # Ensure the value is stored    
+    result = asyncio.run(handler._wrapper.get_value("result").compute())
+    assert result == 1000
+
+def test_handle_task_create_call_with_arg():
     @tensorflow_computation.tf_computation(tf.int32)
     def comp(x):
         return x + 2
 
-    computation = computation_impl.ConcreteComputation.get_proto(comp)
-
-    task = taskstore_pb2.Task()
-
-    function_pb = executor_pb2.Value()
-    function_pb.computation.MergeFrom(computation)
-    task.input.function = function_pb.SerializeToString()
-
-    argument, _ = value_serialization.serialize_value(3, tf.int32)
-    task.input.argument = argument.SerializeToString()
-
     handler = task_handler.TaskHandler(mock.MagicMock())
+
+    # Embed the function in the wrapper
+    asyncio.run(
+      handler._wrapper.create_value("somefunc", comp,
+                           computation_types.FunctionType(tf.int32, tf.int32)))
+
+    # Embed the argument in the wrapper
+    asyncio.run(handler._wrapper.create_value("somearg", 10, tf.int32))
+    task = taskstore_pb2.Task()
+        
+    call_request = executor_pb2.CreateCallRequest(function_ref=executor_pb2.ValueRef(id="somefunc"), argument_ref=executor_pb2.ValueRef(id="somearg"))
+    task.metadata.name = "result"
+    task.input.create_call = call_request.SerializeToString()
+
+    
     asyncio.run(handler._handle_task(task))
+
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    result_pb = executor_pb2.Value()
-    result_pb.ParseFromString(task.result)
-    result_value, result_value_type = value_serialization.deserialize_value(result_pb)
-    assert result_value == 5
+    # Ensure the value is stored    
+    result = asyncio.run(handler._wrapper.get_value("result").compute())
+    assert result == 12
 
 
 class _TasksServicer(taskstore_pb2_grpc.TasksService):

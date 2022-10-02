@@ -77,10 +77,11 @@ message TaskInput {
 
 message TaskOutput {
  oneof response {
-    bytes create_value = 1;
-    bytes create_call = 2;
-    bytes create_struct = 3;
-    bytes create_selection = 4;
+    // TODO(jeremy): We should be able to get rid of the create responses because they don't actually return any data.
+    // bytes create_value = 1;
+    // bytes create_call = 2;
+    // bytes create_struct = 3;
+    // bytes create_selection = 4;
     bytes compute = 5;
     bytes dispose = 6;
   } 

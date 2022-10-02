@@ -114,12 +114,11 @@ class StatefulWrapper:
     if arg_name is not None:
       arg = self._values[arg_name]
     # Create_call creates a callable. We invoke that callable to
-    # produce the result which we cache
-    value = await self._target_executor.create_call(comp, arg)    
-
-    # Invoke compute in order to get the actual value.
-    # N.B. We don't wait for a Compute request to materialize the value
-    self._values[name] = await value.compute()
+    # produce the result which we cache.
+    # EagerExecutor.create_call returns a EagerValue; the actual value
+    # can be obtained by calling compute. We store EagerValue rather than
+    # the result of compute because EagerValue includes type information.
+    self._values[name] = await self._target_executor.create_call(comp, arg)    
 
   @tracing.trace(span=True)
   async def create_struct(self, name, element_names):
