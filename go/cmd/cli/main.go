@@ -69,6 +69,12 @@ func newGetCmd() *cobra.Command {
 				defer conn.Close()
 
 				client := v1alpha1.NewTasksServiceClient(conn)
+
+				popts := protojson.MarshalOptions{
+					Multiline: true,
+					Indent:    "",
+				}
+
 				if name == "" {
 					// Issue a list request.
 					req := &v1alpha1.ListRequest{
@@ -82,7 +88,7 @@ func newGetCmd() *cobra.Command {
 						return errors.Wrapf(err, "List request failed")
 					}
 
-					b, err := protojson.Marshal(resp)
+					b, err := popts.Marshal(resp)
 
 					if err != nil {
 						return errors.Wrapf(err, "Failed to marshal response to json")
@@ -100,7 +106,7 @@ func newGetCmd() *cobra.Command {
 						return errors.Wrapf(err, "Get request failed")
 					}
 
-					b, err := protojson.Marshal(resp)
+					b, err := popts.Marshal(resp)
 
 					if err != nil {
 						return errors.Wrapf(err, "Failed to marshal response to json")
