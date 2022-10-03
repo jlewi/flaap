@@ -37,7 +37,6 @@ func newRootCmd() *cobra.Command {
 				panic(err)
 			}
 			log = *newLogger
-			fmt.Printf("logger initialized leve=%v jsonLogs=%v", jsonLog)
 			log.Info("logger initialized", "level", level, "jsonLogs", jsonLog)
 		},
 		Run: func(cmd *cobra.Command, args []string) {
