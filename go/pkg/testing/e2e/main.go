@@ -9,6 +9,9 @@ import (
 
 	gocmd "github.com/go-cmd/cmd"
 
+	"os/signal"
+	"syscall"
+
 	"github.com/go-logr/logr"
 	"github.com/jlewi/flaap/go/pkg/networking"
 	"github.com/jlewi/flaap/go/pkg/subprocess"
@@ -58,10 +61,7 @@ func newRootCmd() *cobra.Command {
 	root := rootDir()
 	defaultServer := filepath.Join(root, ".build", "server")
 	rootCmd.PersistentFlags().StringVarP(&runner.taskStore, "taskstore", "", defaultServer, "Path to the task store binary")
-	// TODO(jeremy): Cleanup isn't very useful because once the program exits we won't continue to stream the logs of the subprocess
-	// to files which makes them harder to debug. It would be better to keep the main program running and then trap sigterm
-	// and kill the subprocesses.
-	rootCmd.PersistentFlags().BoolVarP(&runner.cleanup, "cleanup", "", true, "Whether to cleanup when the test ends")
+	rootCmd.PersistentFlags().BoolVarP(&runner.terminate, "terminate", "", true, "Whether to terminate when the test ends. Not terminating is useful to debug further")
 	rootCmd.PersistentFlags().StringVarP(&level, "level", "", "info", "The logging level.")
 	rootCmd.PersistentFlags().BoolVarP(&jsonLog, "json-logs", "", true, "Enable json logging.")
 	rootCmd.PersistentFlags().StringVarP(&runner.logsDir, "logs-dir", "", defaultLogsDir, "Directory where logs should be written.")
@@ -77,8 +77,8 @@ type Runner struct {
 	level     string
 	port      int
 
-	cleanup  bool
-	logFiles map[string]*os.File
+	terminate bool
+	logFiles  map[string]*os.File
 
 	// Keep track of all the commands so we can close them.
 	cmds map[string]*gocmd.Cmd
@@ -86,7 +86,11 @@ type Runner struct {
 
 func (r *Runner) Run() error {
 	numWorkers := 2
+	// Defer functions are invoked in last in first out order.
+	// We want to close the processes before closing the files
 	defer r.closeFiles()
+	defer r.closeProcesses()
+
 	r.h = &subprocess.ExecHelper{
 		Log: log,
 	}
@@ -139,21 +143,28 @@ func (r *Runner) Run() error {
 		log.Error(err, "test didn't run successfully")
 	}
 
-	if r.cleanup {
-		log.Info("Cleaning up the e2e tests.")
-		// Stop all the subprocesses
-		for name, c := range r.cmds {
-			// Null op if already stopped
-			log.Info("Stopping subprocess", "process", name)
-			if err := c.Stop(); err != nil {
-				log.Error(err, "Error stopping subprocess", "process", name)
-			}
-		}
-	} else {
-		log.Info("Skipping cleaing up the e2e tests.")
+	if !r.terminate {
+		log.Info("Waiting for sigterm to exit.")
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM)
+
+		s := <-sigs
+		log.Info("Recieved signal", "sig", s)
 	}
 
 	return nil
+}
+
+func (r *Runner) closeProcesses() {
+	log.Info("Cleaning up the e2e tests.")
+	// Stop all the subprocesses
+	for name, c := range r.cmds {
+		// Null op if already stopped
+		log.Info("Stopping subprocess", "process", name)
+		if err := c.Stop(); err != nil {
+			log.Error(err, "Error stopping subprocess", "process", name)
+		}
+	}
 }
 
 func (r *Runner) closeFiles() {
