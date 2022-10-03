@@ -106,7 +106,7 @@ func (s *FileStore) Create(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Tas
 	t.Metadata.ResourceVersion = uuid.New().String()
 	s.data.Tasks[name] = t
 
-	s.log.Info("Creating task", "task", name)
+	s.log.Info("Creating task", "task", name, "numTasks", len(s.data.Tasks))
 	if g, ok := s.data.GroupToTaskNames[group]; ok {
 		// We have seen this group before
 		s.log.V(logging.Debug).Info("Adding task to group", "task", name, "group", group)
@@ -313,6 +313,7 @@ func (s *FileStore) persistNoLock() error {
 	data.Tasks = make([]*v1alpha1.Task, 0, len(s.data.Tasks))
 
 	for _, t := range s.data.Tasks {
+		s.log.V(logging.Debug).Info("Persisting task", "task", t.GetMetadata().GetName())
 		data.Tasks = append(data.Tasks, t)
 	}
 
