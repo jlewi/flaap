@@ -39,6 +39,7 @@ class FakeRequestFn:
 def test_create_call_no_arg():
     channel = mock.MagicMock(spec=grpc.Channel)
     executor = executors.TaskStoreExecutor(channel=channel)
+    executor._group_index = 5
 
     # Construct the remotevalue task to be returned
     response = taskstore_pb2.CreateResponse()
@@ -59,6 +60,10 @@ def test_create_call_no_arg():
 
     assert actual_task.metadata.name != ""
     assert actual_task.group_nonce == executor.group_nonce
+    assert actual_task.group_index == 6
+
+    # Verify group_index got incremented
+    assert executor._group_index == 6
     assert len(actual_task.input.create_call) > 0
 
     request = executor_pb2.CreateCallRequest()
@@ -70,6 +75,8 @@ def test_create_call_no_arg():
 def test_create_call():
     channel = mock.MagicMock(spec=grpc.Channel)
     executor = executors.TaskStoreExecutor(channel=channel)
+
+    executor._group_index = 5
 
     # Construct the remotevalue task to be returned
     response = taskstore_pb2.CreateResponse()
@@ -91,6 +98,11 @@ def test_create_call():
 
     assert actual_task.metadata.name != ""
     assert actual_task.group_nonce == executor.group_nonce
+    assert actual_task.group_index == 6
+
+    # Verify group_index got incremented
+    assert executor._group_index == 6
+
     assert len(actual_task.input.create_call) > 0
 
     request = executor_pb2.CreateCallRequest()
@@ -111,6 +123,8 @@ def test_create_value():
     channel = mock.MagicMock(spec=grpc.Channel)
     executor = executors.TaskStoreExecutor(channel=channel)
 
+    # Set group_index so we can verify it gets incremented
+    executor._group_index = 5
     # Construct the remotevalue task to be returned
     response = taskstore_pb2.CreateResponse()
     response.task.metadata.name = "returnedname"
@@ -126,7 +140,11 @@ def test_create_value():
 
     assert actual_task.metadata.name != ""
     assert actual_task.group_nonce == executor.group_nonce
+    assert actual_task.group_index == 6
     assert len(actual_task.input.create_value) > 0
+
+    # Verify group_index got incremented
+    assert executor._group_index == 6
 
     request = executor_pb2.CreateValueRequest()
     request.ParseFromString(actual_task.input.create_value)
