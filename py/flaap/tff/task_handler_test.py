@@ -9,12 +9,11 @@ from flaap import conditions, taskstore_pb2, taskstore_pb2_grpc
 from flaap.tff import task_handler
 from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.core.impl.computation import computation_impl
-from tensorflow_federated.python.core.impl.executors import value_serialization
 from tensorflow_federated.python.core.impl.tensorflow_context import (
     tensorflow_computation,
 )
 from tensorflow_federated.python.core.impl.types import computation_types
-import pytest
+
 
 def test_handle_task_create_value():
     @tensorflow_computation.tf_computation
@@ -24,7 +23,7 @@ def test_handle_task_create_value():
     computation = computation_impl.ConcreteComputation.get_proto(comp)
 
     task = taskstore_pb2.Task()
-    
+
     value = executor_pb2.Value(computation=computation)
     create_request = executor_pb2.CreateValueRequest(value=value)
     task.metadata.name = "somefunc"
@@ -37,7 +36,7 @@ def test_handle_task_create_value():
 
     # Ensure the value is stored
     stored = handler._wrapper._values["somefunc"]
-    assert  stored.type_signature == computation_types.FunctionType(None, tf.int32)
+    assert stored.type_signature == computation_types.FunctionType(None, tf.int32)
 
 
 def test_handle_task_create_call():
@@ -49,23 +48,27 @@ def test_handle_task_create_call():
 
     # Embed the function in the wrapper
     asyncio.run(
-      handler._wrapper.create_value("somefunc", comp,
-                           computation_types.FunctionType(None, tf.int32)))
+        handler._wrapper.create_value(
+            "somefunc", comp, computation_types.FunctionType(None, tf.int32)
+        )
+    )
 
     task = taskstore_pb2.Task()
-        
-    call_request = executor_pb2.CreateCallRequest(function_ref=executor_pb2.ValueRef(id="somefunc"))
+
+    call_request = executor_pb2.CreateCallRequest(
+        function_ref=executor_pb2.ValueRef(id="somefunc")
+    )
     task.metadata.name = "result"
     task.input.create_call = call_request.SerializeToString()
 
-    
     asyncio.run(handler._handle_task(task))
 
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    # Ensure the value is stored    
+    # Ensure the value is stored
     result = asyncio.run(handler._wrapper.get_value("result").compute())
     assert result == 1000
+
 
 def test_handle_task_create_call_with_arg():
     @tensorflow_computation.tf_computation(tf.int32)
@@ -76,23 +79,27 @@ def test_handle_task_create_call_with_arg():
 
     # Embed the function in the wrapper
     asyncio.run(
-      handler._wrapper.create_value("somefunc", comp,
-                           computation_types.FunctionType(tf.int32, tf.int32)))
+        handler._wrapper.create_value(
+            "somefunc", comp, computation_types.FunctionType(tf.int32, tf.int32)
+        )
+    )
 
     # Embed the argument in the wrapper
     asyncio.run(handler._wrapper.create_value("somearg", 10, tf.int32))
     task = taskstore_pb2.Task()
-        
-    call_request = executor_pb2.CreateCallRequest(function_ref=executor_pb2.ValueRef(id="somefunc"), argument_ref=executor_pb2.ValueRef(id="somearg"))
+
+    call_request = executor_pb2.CreateCallRequest(
+        function_ref=executor_pb2.ValueRef(id="somefunc"),
+        argument_ref=executor_pb2.ValueRef(id="somearg"),
+    )
     task.metadata.name = "result"
     task.input.create_call = call_request.SerializeToString()
 
-    
     asyncio.run(handler._handle_task(task))
 
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    # Ensure the value is stored    
+    # Ensure the value is stored
     result = asyncio.run(handler._wrapper.get_value("result").compute())
     assert result == 12
 
@@ -107,6 +114,7 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
 
         self._list_requests = []
         self._list_responses = []
+
     def Get(self, request, context):
         self._get_call_index += 1
         t = self._get_tasks[self._get_call_index - 1]
@@ -116,7 +124,7 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
     def List(self, request, context):
         # Save the list request for verification in the test
         index = len(self._list_requests)
-        self._list_requests.append(request)        
+        self._list_requests.append(request)
         response = self._list_responses[index]
 
         return response
@@ -148,7 +156,7 @@ def test_poll_and_handle_task_success(handle_task_fn):
     server.add_insecure_port("[::]:{}".format(port))
 
     servicer = _TasksServicer()
-    
+
     # Add two tasks. The second of which will have lower
     # group_index. This way we verify we select the task with lower group_index
     task = taskstore_pb2.Task()

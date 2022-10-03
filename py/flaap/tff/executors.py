@@ -1,12 +1,12 @@
+import logging
 import uuid
 import weakref
 from typing import Mapping
 
-import logging
 import grpc
 import tensorflow_federated
 from absl import logging
-from flaap import networking, taskstore_pb2, taskstore_pb2_grpc
+from flaap import conditions, networking, taskstore_pb2, taskstore_pb2_grpc
 from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.common_libs import py_typecheck, tracing
 from tensorflow_federated.python.core.impl.executors import (
@@ -15,7 +15,6 @@ from tensorflow_federated.python.core.impl.executors import (
     executors_errors,
 )
 from tensorflow_federated.python.core.impl.types import computation_types, placements
-from flaap import conditions
 
 # N.B looks like value_serialization gets moved to executor_serialization in 0.34
 if tensorflow_federated.__version__ < "0.34.0":
@@ -84,7 +83,9 @@ class TaskStoreExecutor(executor_base.Executor):
     def _dispose(self, name: str):
         """Dispose of the corresponding task."""
         # TODO(https://github.com/jlewi/flaap/issues/24): Properly implement cleanup and garbage collection.
-        logging.info("Dispose invoked for value %s but dispose is not implemented", name)
+        logging.info(
+            "Dispose invoked for value %s but dispose is not implemented", name
+        )
 
     @tracing.trace(span=True)
     def set_cardinalities(
@@ -126,10 +127,9 @@ class TaskStoreExecutor(executor_base.Executor):
         value_proto, type_spec = serialize_value()
 
         # Do we need to set an executor_id? The RemoteExecutor does. What should it be
-        create_value_request = executor_pb2.CreateValueRequest(
-            value=value_proto)
-        
-        self._group_index +=1
+        create_value_request = executor_pb2.CreateValueRequest(value=value_proto)
+
+        self._group_index += 1
 
         # Now wrap the CreateValueRequest in a task.
         task = taskstore_pb2.Task()
@@ -138,7 +138,12 @@ class TaskStoreExecutor(executor_base.Executor):
         task.group_nonce = self._group_nonce
         task.group_index = self._group_index
         # Create the task.
-        logging.info("Creating task %s to create value; group %s index %s", task.metadata.name, task.group_nonce, task.group_index)
+        logging.info(
+            "Creating task %s to create value; group %s index %s",
+            task.metadata.name,
+            task.group_nonce,
+            task.group_index,
+        )
         create_task_request = taskstore_pb2.CreateRequest(task=task)
         response = self._request_fn(self._stub.Create, create_task_request)
         py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
@@ -156,34 +161,42 @@ class TaskStoreExecutor(executor_base.Executor):
           computation: A value representing the AST to be run
           arg: Optional the value to be passed to the computation
         """
-        self._group_index +=1
-        py_typecheck.check_type(comp, TaskValue)        
+        self._group_index += 1
+        py_typecheck.check_type(comp, TaskValue)
         # Comp needs to represent a function type as it is supposed to define the operations
         # to be run
         py_typecheck.check_type(comp.type_signature, computation_types.FunctionType)
-        
+
         arg_name = ""
         if arg is not None:
             py_typecheck.check_type(arg, TaskValue)
             arg_name = arg.value_ref().id
-        # Create a CreateCallRequest proto to represent the request to process        
+        # Create a CreateCallRequest proto to represent the request to process
         create_call_request = executor_pb2.CreateCallRequest(
             function_ref=comp.value_ref(),
-            argument_ref=(arg.value_ref() if arg is not None else None))
-        
+            argument_ref=(arg.value_ref() if arg is not None else None),
+        )
+
         task = taskstore_pb2.Task()
         task.metadata.name = uuid.uuid4().hex
         task.input.create_call = create_call_request.SerializeToString()
         task.group_nonce = self._group_nonce
         task.group_index = self._group_index
 
-        logging.info("Creating task %s to create call; comp %s arg %s group %s index %s", task.metadata.name, comp.value_ref().id, arg_name, task.group_nonce, task.group_index)
+        logging.info(
+            "Creating task %s to create call; comp %s arg %s group %s index %s",
+            task.metadata.name,
+            comp.value_ref().id,
+            arg_name,
+            task.group_nonce,
+            task.group_index,
+        )
 
         # Create the task.
         create_task_request = taskstore_pb2.CreateRequest(task=task)
         response = self._request_fn(self._stub.Create, create_task_request)
         py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
-        
+
         # Create a reference to this value using the task name
         return TaskValue(response.task.metadata.name, comp.type_signature.result, self)
 
@@ -210,11 +223,11 @@ class TaskStoreExecutor(executor_base.Executor):
 
     @tracing.trace(span=True)
     async def _compute(self, name):
-        """Compute waits for a given task to complete and then returns its value"""        
-        request = executor_pb2.ComputeRequest(value_ref= executor_pb2.ValueRef(id=name))
-        self._group_index +=1
+        """Compute waits for a given task to complete and then returns its value"""
+        request = executor_pb2.ComputeRequest(value_ref=executor_pb2.ValueRef(id=name))
+        self._group_index += 1
         task = taskstore_pb2.Task()
-        task.metadata.name = uuid.uuid4().hex        
+        task.metadata.name = uuid.uuid4().hex
         task.group_nonce = self._group_nonce
         task.group_index = self._group_index
         task.input.compute = request.SerializeToString()
@@ -228,7 +241,9 @@ class TaskStoreExecutor(executor_base.Executor):
         task = networking.wait_for_task(self._stub, task.metadata.name)
         status = conditions.get(task, conditions.SUCCEEDED)
         if status != taskstore_pb2.TRUE:
-            raise RuntimeError(f"task {task.metadata.name} didn't complete successfully; SUCCEEDED condition {status}")
+            raise RuntimeError(
+                f"task {task.metadata.name} didn't complete successfully; SUCCEEDED condition {status}"
+            )
         logging.info("Getting value from task %s", task.metadata.name)
         compute_pb = executor_pb2.ComputeResponse()
         compute_pb.ParseFromString(task.output.compute)

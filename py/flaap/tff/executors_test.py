@@ -4,7 +4,7 @@ from unittest import mock
 import grpc
 import tensorflow as tf
 import tensorflow_federated
-from flaap import taskstore_pb2
+from flaap import conditions, taskstore_pb2
 from flaap.tff import executors
 from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.common_libs import py_typecheck
@@ -13,7 +13,6 @@ from tensorflow_federated.python.core.impl.tensorflow_context import (
     tensorflow_computation,
 )
 from tensorflow_federated.python.core.impl.types import computation_types
-from flaap import conditions
 
 # N.B looks like value_serialization gets moved to executor_serialization in 0.34
 if tensorflow_federated.__version__ < "0.34.0":
@@ -49,7 +48,9 @@ def test_create_call_no_arg():
     executor._request_fn = fake
 
     # Create a TaskValue to represent the remort function.
-    function_type = computation_types.FunctionType(computation_types.TensorType(tf.int32),computation_types.TensorType(tf.int32))
+    function_type = computation_types.FunctionType(
+        computation_types.TensorType(tf.int32), computation_types.TensorType(tf.int32)
+    )
     function = executors.TaskValue("functask", function_type, executor)
 
     result = asyncio.run(executor.create_call(function))
@@ -68,7 +69,7 @@ def test_create_call_no_arg():
 
     request = executor_pb2.CreateCallRequest()
     request.ParseFromString(actual_task.input.create_call)
-    
+
     assert request.function_ref.id == "functask"
 
 
@@ -85,10 +86,14 @@ def test_create_call():
     fake = FakeRequestFn(response)
     executor._request_fn = fake
 
-     # Create a TaskValue to represent the remort function.
-    function_type = computation_types.FunctionType(computation_types.TensorType(tf.int32),computation_types.TensorType(tf.int32))
+    # Create a TaskValue to represent the remort function.
+    function_type = computation_types.FunctionType(
+        computation_types.TensorType(tf.int32), computation_types.TensorType(tf.int32)
+    )
     function = executors.TaskValue("functask", function_type, executor)
-    argument = executors.TaskValue("argument", computation_types.TensorType(tf.int32), executor)
+    argument = executors.TaskValue(
+        "argument", computation_types.TensorType(tf.int32), executor
+    )
 
     result = asyncio.run(executor.create_call(function, argument))
 
@@ -107,13 +112,14 @@ def test_create_call():
 
     request = executor_pb2.CreateCallRequest()
     request.ParseFromString(actual_task.input.create_call)
-    
+
     assert request.function_ref.id == "functask"
     assert request.argument_ref.id == "argument"
 
+
 # TODO(jeremy): Need a test for create_value
 def test_create_value():
-    # Test that we can create a value representing a computation    
+    # Test that we can create a value representing a computation
     @tensorflow_computation.tf_computation(tf.int32)
     def comp(x):
         return x + 1
@@ -131,7 +137,7 @@ def test_create_value():
 
     fake = FakeRequestFn(response)
     executor._request_fn = fake
-    
+
     result = asyncio.run(executor.create_value(computation))
 
     assert result.name == "returnedname"

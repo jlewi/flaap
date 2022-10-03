@@ -24,7 +24,9 @@ class TaskHandler:
         Args:
           tasks_stub: GRPC stub for the taskstore CRUD API.
         """
-        self._wrapper = stateful_executor.StatefulWrapper(target_executor=eager_tf_executor.EagerTFExecutor())
+        self._wrapper = stateful_executor.StatefulWrapper(
+            target_executor=eager_tf_executor.EagerTFExecutor()
+        )
         # TODO(jeremy): We don't seem to be using this right now but maybe we should?
         self._event_loop = asyncio.new_event_loop()
         # How often to sleep waiting for tasks; in seconds
@@ -42,7 +44,7 @@ class TaskHandler:
         """
         logging.info("Handling task: %s", task.metadata.name)
 
-        if task.input.HasField("create_value"):            
+        if task.input.HasField("create_value"):
             request = executor_pb2.CreateValueRequest()
             request.ParseFromString(task.input.create_value)
 
@@ -57,7 +59,12 @@ class TaskHandler:
             arg_name = None
             if request.HasField("argument_ref"):
                 arg_name = request.argument_ref.id
-            logging.info("Create call %s; comp=%s arg=%s", task.metadata.name, comp_name, arg_name)
+            logging.info(
+                "Create call %s; comp=%s arg=%s",
+                task.metadata.name,
+                comp_name,
+                arg_name,
+            )
             await self._wrapper.create_call(task.metadata.name, comp_name, arg_name)
         elif task.input.HasField("compute"):
             request = executor_pb2.ComputeRequest()
@@ -66,15 +73,19 @@ class TaskHandler:
             # Get the value requested in the compute request
             eager_value = self._wrapper.get_value(request.value_ref.id)
             result = await eager_value.compute()
-            value_proto, _ = value_serialization.serialize_value(result, eager_value.type_signature)
-            
+            value_proto, _ = value_serialization.serialize_value(
+                result, eager_value.type_signature
+            )
+
             # Store the output in the task
             call_response = executor_pb2.ComputeResponse(value=value_proto)
 
             task.output.compute = call_response.SerializeToString()
 
         else:
-            raise NotImplementedError("Code for handling task of this type is not implemented")
+            raise NotImplementedError(
+                "Code for handling task of this type is not implemented"
+            )
 
         conditions.set(task, conditions.SUCCEEDED, taskstore_pb2.TRUE)
         return task
@@ -101,17 +112,20 @@ class TaskHandler:
 
         # TODO(jeremy): We should catch retryable exceptions. As we identify exceptions
         # that we should retry on we should add them to a try/catch block.
-        
+
         # Select the task with the smallest index
         task = response.items[0]
         for other in response.items[1:]:
             if other.group_index == task.group_index:
-                logging.error("Task %s and %s had the same group_index; this shouldn't happen", other.metadata.name, task.metadata.name)
+                logging.error(
+                    "Task %s and %s had the same group_index; this shouldn't happen",
+                    other.metadata.name,
+                    task.metadata.name,
+                )
                 # Try to degrade gracefully but who know what will happen
                 continue
-            if other.group_index < task.group_index:                
+            if other.group_index < task.group_index:
                 task = other
-
 
         new_task = await self._handle_task(task)
 
