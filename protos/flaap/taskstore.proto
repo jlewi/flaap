@@ -45,6 +45,9 @@ message Task {
     // with the same group_nonce may(should?) be processed by the same client.
     // nonce is used to indicate that values should be chosen randomly and treated opaquely.
     string group_nonce = 8;
+    // group_index is used to order tasks within a group. Tasks with higher index value need to
+    // be processed after lower index tasks.
+    int32 group_index = 9;
 }
 
 message TaskInput {
@@ -77,13 +80,9 @@ message TaskInput {
 
 message TaskOutput {
  oneof response {
-    // TODO(jeremy): We should be able to get rid of the create responses because they don't actually return any data.
-    // bytes create_value = 1;
-    // bytes create_call = 2;
-    // bytes create_struct = 3;
-    // bytes create_selection = 4;
-    bytes compute = 5;
-    bytes dispose = 6;
+    bytes compute = 1;
+    // TODO(jeremy): Should dispose have a response?
+    bytes dispose = 2;
   } 
 }
 
