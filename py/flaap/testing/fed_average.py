@@ -108,10 +108,11 @@ class Runner:
         # Instead the algorithm works by computing the average local to each worker and then averaging
         # the averages (so giving equal weight to the average from each worker)
         expected = np.mean([np.mean(x) for x in data])
-        result = get_global_temperature_average(data)
+        result = get_global_temperature_average(data)        
         # N.B.
         print(f"Actual={result} Properly Weighted={expected}")
-
+        logging.info("Result=%s", result)
+        logging.info("fed_average.py finished")
 
 if __name__ == "__main__":
 

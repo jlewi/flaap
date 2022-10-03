@@ -86,7 +86,7 @@ type Runner struct {
 }
 
 func (r *Runner) Run() error {
-	numWorkers := 0
+	numWorkers := 2
 	// Defer functions are invoked in last in first out order.
 	// We want to close the processes before closing the files
 	defer r.closeFiles()

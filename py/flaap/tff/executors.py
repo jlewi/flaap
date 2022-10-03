@@ -82,9 +82,8 @@ class TaskStoreExecutor(executor_base.Executor):
 
     def _dispose(self, name: str):
         """Dispose of the corresponding task."""
-        delete_request = taskstore_pb2.DeleteRequest()
-        delete_request.name = name
-        self._request_fn(self._stub.Delete, delete_request)
+        # TODO(https://github.com/jlewi/flaap/issues/24): Properly implement cleanup and garbage collection.
+        logging.info("Dispose invoked for value %s but dispose is not implemented", name)
 
     @tracing.trace(span=True)
     def set_cardinalities(
