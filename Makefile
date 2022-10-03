@@ -9,6 +9,7 @@ build-dir:
 
 build-go: build-dir
 	cd go && go build -o ../.build/server ./cmd/server/...
+	cd go && go build -o ../.build/cli ./cmd/cli/...
 
 build-e2e: build-dir
 	cd go && go build -o ../.build/e2e ./pkg/testing/e2e
