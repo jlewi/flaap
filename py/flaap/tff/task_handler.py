@@ -65,8 +65,8 @@ class TaskHandler:
 
             # Get the value requested in the compute request
             eager_value = self._wrapper.get_value(request.value_ref.id)
-
-            value_proto, _ = value_serialization.serialize_value(eager_value.compute(), eager_value.type_signature)
+            result = await eager_value.compute()
+            value_proto, _ = value_serialization.serialize_value(result, eager_value.type_signature)
             
             # Store the output in the task
             call_response = executor_pb2.ComputeResponse(value=value_proto)

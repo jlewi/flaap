@@ -13,7 +13,7 @@ from tensorflow_federated.python.core.impl.tensorflow_context import (
     tensorflow_computation,
 )
 from tensorflow_federated.python.core.impl.types import computation_types
-import pytest
+from flaap import conditions
 
 # N.B looks like value_serialization gets moved to executor_serialization in 0.34
 if tensorflow_federated.__version__ < "0.34.0":
@@ -164,11 +164,13 @@ def test_compute(wait_for_task):
     # The task should contain the result of the computation in this case an integer
     result, _ = executor_serialization.serialize_value(10, tf.int32)
 
+    compute_pb = executor_pb2.ComputeResponse(value=result)
     # Response is the task that will be returned by the call to create the task
     # that _compute issues.
     response = taskstore_pb2.CreateResponse()
     response.task.metadata.name = "returnedname"
-    response.task.output.compute = result.SerializeToString()
+    response.task.output.compute = compute_pb.SerializeToString()
+    conditions.set(response.task, conditions.SUCCEEDED, taskstore_pb2.TRUE)
 
     fake = FakeRequestFn(response)
     executor._request_fn = fake
