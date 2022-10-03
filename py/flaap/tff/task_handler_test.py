@@ -106,7 +106,7 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
         self._tasks = {}
 
         self._list_requests = []
-
+        self._list_responses = []
     def Get(self, request, context):
         self._get_call_index += 1
         t = self._get_tasks[self._get_call_index - 1]
@@ -115,11 +115,10 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
 
     def List(self, request, context):
         # Save the list request for verification in the test
-        self._list_requests.append(request)
-        response = taskstore_pb2.ListResponse()
+        index = len(self._list_requests)
+        self._list_requests.append(request)        
+        response = self._list_responses[index]
 
-        for _, t in self._tasks.items():
-            response.items.append(t)
         return response
 
     def Create(self, request, context):
@@ -149,10 +148,21 @@ def test_poll_and_handle_task_success(handle_task_fn):
     server.add_insecure_port("[::]:{}".format(port))
 
     servicer = _TasksServicer()
+    
+    # Add two tasks. The second of which will have lower
+    # group_index. This way we verify we select the task with lower group_index
     task = taskstore_pb2.Task()
     task.metadata.name = "task1"
+    task.group_index = 10
 
-    servicer._tasks[task.metadata.name] = task
+    task2 = taskstore_pb2.Task()
+    task2.metadata.name = "task2"
+    task2.group_index = 1
+
+    list_response = taskstore_pb2.ListResponse()
+    list_response.items.append(task)
+    list_response.items.append(task2)
+    servicer._list_responses.append(list_response)
 
     taskstore_pb2_grpc.add_TasksServiceServicer_to_server(servicer, server)
     server.start()
@@ -167,7 +177,7 @@ def test_poll_and_handle_task_success(handle_task_fn):
         handler = task_handler.TaskHandler(tasks_stub)
 
         result = asyncio.run(handler._poll_and_handle_task())
-        assert result == 1
+        assert result == "task2"
 
         # Ensure worker_id is set correctly
         list_request = servicer._list_requests[0]
@@ -194,12 +204,14 @@ def test_poll_and_handle_task_no_tasks(handle_task_fn):
     taskstore_pb2_grpc.add_TasksServiceServicer_to_server(servicer, server)
     server.start()
 
+    servicer._list_responses = [taskstore_pb2.ListResponse()]
+
     with grpc.insecure_channel(f"localhost:{port}") as channel:
         tasks_stub = taskstore_pb2_grpc.TasksServiceStub(channel)
         handler = task_handler.TaskHandler(tasks_stub)
         handler._polling_interval = 0.1
         result = asyncio.run(handler._poll_and_handle_task())
-        assert result == 0
+        assert result == ""
 
         # Ensure worker_id is set correctly
         list_request = servicer._list_requests[0]

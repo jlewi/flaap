@@ -83,8 +83,7 @@ class TaskHandler:
         """Poll for any available tasks and handle them if they are available
 
         Returns:
-           num_tasks: Number of tasks successfully handled. Should be 1 if one task is processed
-             and zero otherwise.
+           task_name: Name of task successfully processed if task is successfull processed and empty string otherwise.
         """
         # TODO(https://github.com/jlewi/flaap/issues/7):
         request = taskstore_pb2.ListRequest()
@@ -96,13 +95,23 @@ class TaskHandler:
         if len(response.items) == 0:
             logging.info("No available tasks")
             await asyncio.sleep(self._polling_interval)
-            return 0
+            return ""
 
         logging.info("Recieved %s tasks", len(response.items))
 
         # TODO(jeremy): We should catch retryable exceptions. As we identify exceptions
         # that we should retry on we should add them to a try/catch block.
+        
+        # Select the task with the smallest index
         task = response.items[0]
+        for other in response.items[1:]:
+            if other.group_index == task.group_index:
+                logging.error("Task %s and %s had the same group_index; this shouldn't happen", other.metadata.name, task.metadata.name)
+                # Try to degrade gracefully but who know what will happen
+                continue
+            if other.group_index < task.group_index:                
+                task = other
+
 
         new_task = await self._handle_task(task)
 
@@ -112,7 +121,7 @@ class TaskHandler:
 
         # TODO(jeremy): We should add appropriate error and retry handling.
         response = _run_rpc(self._tasks_stub.Update, update_request)
-        return 1
+        return task.metadata.name
 
     async def run(self):
         """Periodically poll the taskstore for tasks and process them"""
