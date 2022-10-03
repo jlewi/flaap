@@ -65,8 +65,8 @@ class TaskStoreExecutor(executor_base.Executor):
         # This will be used to ensure they all get assigned to the same client and a single
         # client doesn't claim more then its set of tasks.
         self._group_nonce = uuid.uuid4().hex
+        self._group_index = 0
 
-        #self._executor_id = self._group
     @property
     def group_nonce(self):
         return self._group_nonce
@@ -128,14 +128,16 @@ class TaskStoreExecutor(executor_base.Executor):
         create_value_request = executor_pb2.CreateValueRequest(
             value=value_proto)
         
+        self._group_index +=1
+
         # Now wrap the CreateValueRequest in a task.
         task = taskstore_pb2.Task()
         task.metadata.name = uuid.uuid4().hex
         task.input.create_value = create_value_request.SerializeToString()
         task.group_nonce = self._group_nonce
-
+        task.group_index = self._group_index
         # Create the task.
-        logging.info("Creating task %s to create value", task.metadata.name)
+        logging.info("Creating task %s to create value; group %s index %s", task.metadata.name, task.group_nonce, task.group_index)
         create_task_request = taskstore_pb2.CreateRequest(task=task)
         response = self._request_fn(self._stub.Create, create_task_request)
         py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
@@ -153,6 +155,7 @@ class TaskStoreExecutor(executor_base.Executor):
           computation: A value representing the AST to be run
           arg: Optional the value to be passed to the computation
         """
+        self._group_index +=1
         py_typecheck.check_type(comp, TaskValue)        
         # Comp needs to represent a function type as it is supposed to define the operations
         # to be run
@@ -171,8 +174,9 @@ class TaskStoreExecutor(executor_base.Executor):
         task.metadata.name = uuid.uuid4().hex
         task.input.create_call = create_call_request.SerializeToString()
         task.group_nonce = self._group_nonce
-        
-        logging.info("Creating task %s to create call; comp %s arg %s", task.metadata.name, comp.value_ref().id, arg_name)
+        task.group_index = self._group_index
+
+        logging.info("Creating task %s to create call; comp %s arg %s group %s index %s", task.metadata.name, comp.value_ref().id, arg_name, task.group_nonce, task.group_index)
 
         # Create the task.
         create_task_request = taskstore_pb2.CreateRequest(task=task)
@@ -207,11 +211,11 @@ class TaskStoreExecutor(executor_base.Executor):
     async def _compute(self, name):
         """Compute waits for a given task to complete and then returns its value"""        
         request = executor_pb2.ComputeRequest(value_ref= executor_pb2.ValueRef(id=name))
-    
+        self._group_index +=1
         task = taskstore_pb2.Task()
         task.metadata.name = uuid.uuid4().hex        
         task.group_nonce = self._group_nonce
-
+        task.group_index = self._group_index
         task.input.compute = request.SerializeToString()
 
         create_task_request = taskstore_pb2.CreateRequest(task=task)
