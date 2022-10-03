@@ -11,12 +11,10 @@ import (
 	"github.com/jlewi/flaap/go/pkg/tasks"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/go-logr/zapr"
 	"github.com/jlewi/p22h/backend/pkg/logging"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -39,6 +37,8 @@ func newRootCmd() *cobra.Command {
 				panic(err)
 			}
 			log = *newLogger
+			fmt.Printf("logger initialized leve=%v jsonLogs=%v", jsonLog)
+			log.Info("logger initialized", "level", level, "jsonLogs", jsonLog)
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			err := run(port, fileName)
@@ -57,10 +57,6 @@ func newRootCmd() *cobra.Command {
 }
 
 func run(port int, fileName string) error {
-	zc := zap.NewProductionConfig()
-	z, _ := zc.Build()
-	log := zapr.NewLogger(z)
-
 	fileStore, err := tasks.NewFileStore(fileName, log)
 
 	if err != nil {

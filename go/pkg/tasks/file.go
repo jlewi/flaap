@@ -121,6 +121,8 @@ func (s *FileStore) Create(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Tas
 	}
 
 	err := s.persistNoLock()
+	// TODO(jeremy): log this at debug level
+	s.log.Info("Done creating task", "task", name, "numTasks", len(s.data.Tasks))
 	return t, err
 }
 

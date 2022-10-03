@@ -34,11 +34,7 @@ func rootDir() string {
 func newRootCmd() *cobra.Command {
 	var level string
 	var jsonLog bool
-
-	runner := &Runner{
-		jsonLog: jsonLog,
-		level:   level,
-	}
+	runner := &Runner{}
 
 	rootCmd := &cobra.Command{
 		Short: "Run the E2E test",
@@ -50,6 +46,11 @@ func newRootCmd() *cobra.Command {
 			log = *newLogger
 		},
 		Run: func(cmd *cobra.Command, args []string) {
+			// N.B. These values need to be set inside run because jsonLog and level won't be bound
+			// to the values until then.
+			runner.jsonLog = jsonLog
+			runner.level = level
+
 			if err := runner.Run(); err != nil {
 				fmt.Printf("run failed with error: %+v", err)
 				os.Exit(1)
@@ -85,7 +86,7 @@ type Runner struct {
 }
 
 func (r *Runner) Run() error {
-	numWorkers := 2
+	numWorkers := 0
 	// Defer functions are invoked in last in first out order.
 	// We want to close the processes before closing the files
 	defer r.closeFiles()

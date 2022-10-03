@@ -50,6 +50,9 @@ test: test-go
 e2e: build-go build-e2e
 	# Delete any tasks from previous run
 	rm -f /tmp/tasks.json
+	# This isn't a very robust way to deal with cleaning up logs 
+	# Should we do it inside the test? Should we pass a timestamped directory?
+	rm -rf /tmp/flaapE2ELogs	
 	PYTHONPATH=$(ROOT)/py .build/e2e \
 		--taskstore=$(ROOT)/.build/server \
 		--json-logs=false --level=debug \
