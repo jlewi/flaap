@@ -4,6 +4,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"strings"
+
 	"github.com/go-logr/logr"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
 	"github.com/jlewi/p22h/backend/pkg/logging"
@@ -12,9 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
-	"io"
-	"os"
-	"strings"
 )
 
 var (
@@ -132,5 +133,8 @@ func newGetCmd() *cobra.Command {
 func main() {
 	rootCmd := newRootCmd()
 	rootCmd.AddCommand(newGetCmd())
-	rootCmd.Execute()
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Printf("Command failed with error: %+v", err)
+		os.Exit(1)
+	}
 }
