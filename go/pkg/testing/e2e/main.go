@@ -147,7 +147,9 @@ func (r *Runner) Run() error {
 	if !r.terminate {
 		log.Info("Waiting for sigterm to exit.")
 		sigs := make(chan os.Signal, 1)
-		signal.Notify(sigs, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM)
+		// SIGSTOP and SIGTERM can't be caught; however SIGINT works as expected when using ctl-z
+		// to interrupt the process
+		signal.Notify(sigs, syscall.SIGINT)
 
 		s := <-sigs
 		log.Info("Recieved signal", "sig", s)
