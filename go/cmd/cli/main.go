@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 	"io"
 	"os"
@@ -60,6 +61,7 @@ func newGetCmd() *cobra.Command {
 					name = args[1]
 				}
 				var opts []grpc.DialOption
+				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 				conn, err := grpc.Dial(endpoint, opts...)
 				if err != nil {
 					return errors.Wrapf(err, "Failed to connect to taskstore at %v", endpoint)
