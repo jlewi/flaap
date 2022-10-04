@@ -6,7 +6,7 @@ import fire
 import grpc
 import tenacity
 from flaap import conditions, taskstore_pb2, taskstore_pb2_grpc
-from flaap.tff import stateful_executor
+from flaap.tff import stateful_wrapper
 from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.common_libs import tracing
 from tensorflow_federated.python.core.impl.executors import (
@@ -24,7 +24,7 @@ class TaskHandler:
         Args:
           tasks_stub: GRPC stub for the taskstore CRUD API.
         """
-        self._wrapper = stateful_executor.StatefulWrapper(
+        self._wrapper = stateful_wrapper.StatefulWrapper(
             target_executor=eager_tf_executor.EagerTFExecutor()
         )
         # TODO(jeremy): We don't seem to be using this right now but maybe we should?
