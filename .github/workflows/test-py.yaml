@@ -4,7 +4,6 @@ on: [push]
 defaults:
   run:
     shell: bash -ieo pipefail {0}
-    working-directory: go
 jobs:
   test:
     name: python test & build
@@ -12,5 +11,9 @@ jobs:
     container: gcr.io/tensorflow-federated/remote-executor-service:0.32.0@sha256:82aa0520bc2ac4dea31eae486f26780f7220d8dcb2170c4333670fc1dd407b33
     steps:
       - uses: actions/checkout@v3
+      # - name: version
+      #   run: python --version
+      - name: debug
+        run: pwd && ls -la
       - name: test
-        run: python version
+        run: pytest ./py
