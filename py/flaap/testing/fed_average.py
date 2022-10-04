@@ -111,6 +111,8 @@ class Runner:
         result = get_global_temperature_average(data)
         # N.B.
         print(f"Actual={result} Properly Weighted={expected}")
+        logging.info("Result=%s", result)
+        logging.info("fed_average.py finished")
 
 
 if __name__ == "__main__":

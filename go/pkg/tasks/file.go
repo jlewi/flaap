@@ -5,9 +5,8 @@ import (
 	"os"
 	"sync"
 
-	"google.golang.org/protobuf/encoding/protojson"
-
 	"github.com/jlewi/p22h/backend/pkg/logging"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
@@ -104,6 +103,7 @@ func (s *FileStore) Create(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Tas
 
 	// Generate a unique resourceVersion
 	t.Metadata.ResourceVersion = uuid.New().String()
+	s.log.Info("Creating task", "task", name)
 	s.data.Tasks[name] = t
 
 	if g, ok := s.data.GroupToTaskNames[group]; ok {
@@ -142,6 +142,8 @@ func (s *FileStore) Get(ctx context.Context, name string) (*v1alpha1.Task, error
 
 // Update the specified task. If the task doesn't exist it will be created
 func (s *FileStore) Update(ctx context.Context, t *v1alpha1.Task, worker string) (*v1alpha1.Task, error) {
+	log := s.log.WithValues("name", t.GetMetadata().GetName(), "worker", worker)
+	log.Info("update task")
 	name := t.GetMetadata().GetName()
 	exists := func() bool {
 		s.mu.Lock()
@@ -193,6 +195,8 @@ func (s *FileStore) Update(ctx context.Context, t *v1alpha1.Task, worker string)
 
 // Delete the specified task. Delete is a null op if the task doesn't exist
 func (s *FileStore) Delete(ctx context.Context, name string) error {
+	log := s.log.WithValues("name", name)
+	log.Info("delete task")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -309,6 +313,7 @@ func (s *FileStore) persistNoLock() error {
 	}
 
 	data := &v1alpha1.StoredData{}
+	s.log.V(logging.Debug).Info("Initializing storage array", "size", len(s.data.Tasks))
 	data.Tasks = make([]*v1alpha1.Task, 0, len(s.data.Tasks))
 
 	for _, t := range s.data.Tasks {

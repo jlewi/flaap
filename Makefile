@@ -9,6 +9,7 @@ build-dir:
 
 build-go: build-dir
 	cd go && go build -o ../.build/server ./cmd/server/...
+	cd go && go build -o ../.build/cli ./cmd/cli/...
 
 build-e2e: build-dir
 	cd go && go build -o ../.build/e2e ./pkg/testing/e2e
@@ -49,10 +50,13 @@ test: test-go
 e2e: build-go build-e2e
 	# Delete any tasks from previous run
 	rm -f /tmp/tasks.json
+	# This isn't a very robust way to deal with cleaning up logs 
+	# Should we do it inside the test? Should we pass a timestamped directory?
+	rm -rf /tmp/flaapE2ELogs	
 	PYTHONPATH=$(ROOT)/py .build/e2e \
 		--taskstore=$(ROOT)/.build/server \
 		--json-logs=false --level=debug \
-		--port=8081
+		--port=8081 --terminate=false
 
 
 # Cleanup e2e processes

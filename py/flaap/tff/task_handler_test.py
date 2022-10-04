@@ -9,13 +9,13 @@ from flaap import conditions, taskstore_pb2, taskstore_pb2_grpc
 from flaap.tff import task_handler
 from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.core.impl.computation import computation_impl
-from tensorflow_federated.python.core.impl.executors import value_serialization
 from tensorflow_federated.python.core.impl.tensorflow_context import (
     tensorflow_computation,
 )
+from tensorflow_federated.python.core.impl.types import computation_types
 
 
-def test_handle_task():
+def test_handle_task_create_value():
     @tensorflow_computation.tf_computation
     def comp():
         return 1000
@@ -23,46 +23,85 @@ def test_handle_task():
     computation = computation_impl.ConcreteComputation.get_proto(comp)
 
     task = taskstore_pb2.Task()
-    function_pb = executor_pb2.Value()
-    function_pb.computation.MergeFrom(computation)
-    task.input.function = function_pb.SerializeToString()
+
+    value = executor_pb2.Value(computation=computation)
+    create_request = executor_pb2.CreateValueRequest(value=value)
+    task.metadata.name = "somefunc"
+    task.input.create_value = create_request.SerializeToString()
 
     handler = task_handler.TaskHandler(mock.MagicMock())
     asyncio.run(handler._handle_task(task))
 
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    result_pb = executor_pb2.Value()
-    result_pb.ParseFromString(task.result)
-
-    result_value, result_value_type = value_serialization.deserialize_value(result_pb)
-    assert result_value == 1000
+    # Ensure the value is stored
+    stored = handler._wrapper._values["somefunc"]
+    assert stored.type_signature == computation_types.FunctionType(None, tf.int32)
 
 
-def test_handle_task_with_arg():
+def test_handle_task_create_call():
+    @tensorflow_computation.tf_computation
+    def comp():
+        return 1000
+
+    handler = task_handler.TaskHandler(mock.MagicMock())
+
+    # Embed the function in the wrapper
+    asyncio.run(
+        handler._wrapper.create_value(
+            "somefunc", comp, computation_types.FunctionType(None, tf.int32)
+        )
+    )
+
+    task = taskstore_pb2.Task()
+
+    call_request = executor_pb2.CreateCallRequest(
+        function_ref=executor_pb2.ValueRef(id="somefunc")
+    )
+    task.metadata.name = "result"
+    task.input.create_call = call_request.SerializeToString()
+
+    asyncio.run(handler._handle_task(task))
+
+    assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
+
+    # Ensure the value is stored
+    result = asyncio.run(handler._wrapper.get_value("result").compute())
+    assert result == 1000
+
+
+def test_handle_task_create_call_with_arg():
     @tensorflow_computation.tf_computation(tf.int32)
     def comp(x):
         return x + 2
 
-    computation = computation_impl.ConcreteComputation.get_proto(comp)
+    handler = task_handler.TaskHandler(mock.MagicMock())
 
+    # Embed the function in the wrapper
+    asyncio.run(
+        handler._wrapper.create_value(
+            "somefunc", comp, computation_types.FunctionType(tf.int32, tf.int32)
+        )
+    )
+
+    # Embed the argument in the wrapper
+    asyncio.run(handler._wrapper.create_value("somearg", 10, tf.int32))
     task = taskstore_pb2.Task()
 
-    function_pb = executor_pb2.Value()
-    function_pb.computation.MergeFrom(computation)
-    task.input.function = function_pb.SerializeToString()
+    call_request = executor_pb2.CreateCallRequest(
+        function_ref=executor_pb2.ValueRef(id="somefunc"),
+        argument_ref=executor_pb2.ValueRef(id="somearg"),
+    )
+    task.metadata.name = "result"
+    task.input.create_call = call_request.SerializeToString()
 
-    argument, _ = value_serialization.serialize_value(3, tf.int32)
-    task.input.argument = argument.SerializeToString()
-
-    handler = task_handler.TaskHandler(mock.MagicMock())
     asyncio.run(handler._handle_task(task))
+
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
 
-    result_pb = executor_pb2.Value()
-    result_pb.ParseFromString(task.result)
-    result_value, result_value_type = value_serialization.deserialize_value(result_pb)
-    assert result_value == 5
+    # Ensure the value is stored
+    result = asyncio.run(handler._wrapper.get_value("result").compute())
+    assert result == 12
 
 
 class _TasksServicer(taskstore_pb2_grpc.TasksService):
@@ -74,6 +113,7 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
         self._tasks = {}
 
         self._list_requests = []
+        self._list_responses = []
 
     def Get(self, request, context):
         self._get_call_index += 1
@@ -83,11 +123,10 @@ class _TasksServicer(taskstore_pb2_grpc.TasksService):
 
     def List(self, request, context):
         # Save the list request for verification in the test
+        index = len(self._list_requests)
         self._list_requests.append(request)
-        response = taskstore_pb2.ListResponse()
+        response = self._list_responses[index]
 
-        for _, t in self._tasks.items():
-            response.items.append(t)
         return response
 
     def Create(self, request, context):
@@ -117,10 +156,21 @@ def test_poll_and_handle_task_success(handle_task_fn):
     server.add_insecure_port("[::]:{}".format(port))
 
     servicer = _TasksServicer()
+
+    # Add two tasks. The second of which will have lower
+    # group_index. This way we verify we select the task with lower group_index
     task = taskstore_pb2.Task()
     task.metadata.name = "task1"
+    task.group_index = 10
 
-    servicer._tasks[task.metadata.name] = task
+    task2 = taskstore_pb2.Task()
+    task2.metadata.name = "task2"
+    task2.group_index = 1
+
+    list_response = taskstore_pb2.ListResponse()
+    list_response.items.append(task)
+    list_response.items.append(task2)
+    servicer._list_responses.append(list_response)
 
     taskstore_pb2_grpc.add_TasksServiceServicer_to_server(servicer, server)
     server.start()
@@ -135,7 +185,7 @@ def test_poll_and_handle_task_success(handle_task_fn):
         handler = task_handler.TaskHandler(tasks_stub)
 
         result = asyncio.run(handler._poll_and_handle_task())
-        assert result == 1
+        assert result == "task2"
 
         # Ensure worker_id is set correctly
         list_request = servicer._list_requests[0]
@@ -162,12 +212,14 @@ def test_poll_and_handle_task_no_tasks(handle_task_fn):
     taskstore_pb2_grpc.add_TasksServiceServicer_to_server(servicer, server)
     server.start()
 
+    servicer._list_responses = [taskstore_pb2.ListResponse()]
+
     with grpc.insecure_channel(f"localhost:{port}") as channel:
         tasks_stub = taskstore_pb2_grpc.TasksServiceStub(channel)
         handler = task_handler.TaskHandler(tasks_stub)
         handler._polling_interval = 0.1
         result = asyncio.run(handler._poll_and_handle_task())
-        assert result == 0
+        assert result == ""
 
         # Ensure worker_id is set correctly
         list_request = servicer._list_requests[0]

@@ -53,7 +53,7 @@ func Test_NewFileStore(t *testing.T) {
 						Name: "task1",
 					},
 					Input: &v1alpha1.TaskInput{
-						Function: []byte("1234abcd"),
+						Request: &v1alpha1.TaskInput_CreateValue{CreateValue: []byte("1234")},
 					},
 				},
 			},

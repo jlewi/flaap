@@ -6,6 +6,7 @@ import fire
 import grpc
 import tenacity
 from flaap import conditions, taskstore_pb2, taskstore_pb2_grpc
+from flaap.tff import stateful_wrapper
 from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.common_libs import tracing
 from tensorflow_federated.python.core.impl.executors import (
@@ -23,7 +24,10 @@ class TaskHandler:
         Args:
           tasks_stub: GRPC stub for the taskstore CRUD API.
         """
-        self._executor = eager_tf_executor.EagerTFExecutor()
+        self._wrapper = stateful_wrapper.StatefulWrapper(
+            target_executor=eager_tf_executor.EagerTFExecutor()
+        )
+        # TODO(jeremy): We don't seem to be using this right now but maybe we should?
         self._event_loop = asyncio.new_event_loop()
         # How often to sleep waiting for tasks; in seconds
         self._polling_interval = 30
@@ -34,40 +38,54 @@ class TaskHandler:
     async def _handle_task(self, task):
         """Handle a task.
 
-        A task is expected to hold a CreateValueRequest. With the gRPC executor service
-        the client would issue a CreateValueRequest to create the value in the executor
-        and then issue a Compute request to get the value of that request. _handle_task
-        effectively bundles that functionality.
-
         For reference: Here's a link to the remote executor service.
         https://github.com/tensorflow/federated/blob/a6506385def304c260a424b29e5b34c6d905760e/tensorflow_federated/python/core/impl/executors/executor_service.py#L223
 
         """
         logging.info("Handling task: %s", task.metadata.name)
-        # Desiralize the value proto into a value and type.
-        function_pb = executor_pb2.Value()
-        function_pb.ParseFromString(task.input.function)
-        function_value, function_value_type = value_serialization.deserialize_value(
-            function_pb
-        )
 
-        eager_value = await self._executor.create_value(
-            function_value, function_value_type
-        )
-        eager_arg = None
-        if task.input.argument:
-            argument_pb = executor_pb2.Value()
-            argument_pb.ParseFromString(task.input.argument)
-            arg_value, arg_type = value_serialization.deserialize_value(argument_pb)
+        if task.input.HasField("create_value"):
+            request = executor_pb2.CreateValueRequest()
+            request.ParseFromString(task.input.create_value)
 
-            eager_arg = await self._executor.create_value(arg_value, arg_type)
-        eager_result = await self._executor.create_call(eager_value, eager_arg)
+            value, value_type = value_serialization.deserialize_value(request.value)
+            logging.info("Create value %s", task.metadata.name)
+            await self._wrapper.create_value(task.metadata.name, value, value_type)
 
-        # Invoke compute in order to get the actual value.
-        result_val = await eager_result.compute()
-        val_type = eager_result.type_signature
-        value_proto, _ = value_serialization.serialize_value(result_val, val_type)
-        task.result = value_proto.SerializeToString()
+        elif task.input.HasField("create_call"):
+            request = executor_pb2.CreateCallRequest()
+            request.ParseFromString(task.input.create_call)
+            comp_name = request.function_ref.id
+            arg_name = None
+            if request.HasField("argument_ref"):
+                arg_name = request.argument_ref.id
+            logging.info(
+                "Create call %s; comp=%s arg=%s",
+                task.metadata.name,
+                comp_name,
+                arg_name,
+            )
+            await self._wrapper.create_call(task.metadata.name, comp_name, arg_name)
+        elif task.input.HasField("compute"):
+            request = executor_pb2.ComputeRequest()
+            request.ParseFromString(task.input.compute)
+
+            # Get the value requested in the compute request
+            eager_value = self._wrapper.get_value(request.value_ref.id)
+            result = await eager_value.compute()
+            value_proto, _ = value_serialization.serialize_value(
+                result, eager_value.type_signature
+            )
+
+            # Store the output in the task
+            call_response = executor_pb2.ComputeResponse(value=value_proto)
+
+            task.output.compute = call_response.SerializeToString()
+
+        else:
+            raise NotImplementedError(
+                "Code for handling task of this type is not implemented"
+            )
 
         conditions.set(task, conditions.SUCCEEDED, taskstore_pb2.TRUE)
         return task
@@ -76,8 +94,7 @@ class TaskHandler:
         """Poll for any available tasks and handle them if they are available
 
         Returns:
-           num_tasks: Number of tasks successfully handled. Should be 1 if one task is processed
-             and zero otherwise.
+           task_name: Name of task successfully processed if task is successfull processed and empty string otherwise.
         """
         # TODO(https://github.com/jlewi/flaap/issues/7):
         request = taskstore_pb2.ListRequest()
@@ -89,13 +106,26 @@ class TaskHandler:
         if len(response.items) == 0:
             logging.info("No available tasks")
             await asyncio.sleep(self._polling_interval)
-            return 0
+            return ""
 
         logging.info("Recieved %s tasks", len(response.items))
 
         # TODO(jeremy): We should catch retryable exceptions. As we identify exceptions
         # that we should retry on we should add them to a try/catch block.
+
+        # Select the task with the smallest index
         task = response.items[0]
+        for other in response.items[1:]:
+            if other.group_index == task.group_index:
+                logging.error(
+                    "Task %s and %s had the same group_index; this shouldn't happen",
+                    other.metadata.name,
+                    task.metadata.name,
+                )
+                # Try to degrade gracefully but who know what will happen
+                continue
+            if other.group_index < task.group_index:
+                task = other
 
         new_task = await self._handle_task(task)
 
@@ -105,7 +135,7 @@ class TaskHandler:
 
         # TODO(jeremy): We should add appropriate error and retry handling.
         response = _run_rpc(self._tasks_stub.Update, update_request)
-        return 1
+        return task.metadata.name
 
     async def run(self):
         """Periodically poll the taskstore for tasks and process them"""

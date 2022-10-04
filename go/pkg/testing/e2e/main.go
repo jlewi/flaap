@@ -9,6 +9,9 @@ import (
 
 	gocmd "github.com/go-cmd/cmd"
 
+	"os/signal"
+	"syscall"
+
 	"github.com/go-logr/logr"
 	"github.com/jlewi/flaap/go/pkg/networking"
 	"github.com/jlewi/flaap/go/pkg/subprocess"
@@ -31,11 +34,7 @@ func rootDir() string {
 func newRootCmd() *cobra.Command {
 	var level string
 	var jsonLog bool
-
-	runner := &Runner{
-		jsonLog: jsonLog,
-		level:   level,
-	}
+	runner := &Runner{}
 
 	rootCmd := &cobra.Command{
 		Short: "Run the E2E test",
@@ -47,6 +46,11 @@ func newRootCmd() *cobra.Command {
 			log = *newLogger
 		},
 		Run: func(cmd *cobra.Command, args []string) {
+			// N.B. These values need to be set inside run because jsonLog and level won't be bound
+			// to the values until then.
+			runner.jsonLog = jsonLog
+			runner.level = level
+
 			if err := runner.Run(); err != nil {
 				fmt.Printf("run failed with error: %+v", err)
 				os.Exit(1)
@@ -58,6 +62,7 @@ func newRootCmd() *cobra.Command {
 	root := rootDir()
 	defaultServer := filepath.Join(root, ".build", "server")
 	rootCmd.PersistentFlags().StringVarP(&runner.taskStore, "taskstore", "", defaultServer, "Path to the task store binary")
+	rootCmd.PersistentFlags().BoolVarP(&runner.terminate, "terminate", "", true, "Whether to terminate when the test ends. Not terminating is useful to debug further")
 	rootCmd.PersistentFlags().StringVarP(&level, "level", "", "info", "The logging level.")
 	rootCmd.PersistentFlags().BoolVarP(&jsonLog, "json-logs", "", true, "Enable json logging.")
 	rootCmd.PersistentFlags().StringVarP(&runner.logsDir, "logs-dir", "", defaultLogsDir, "Directory where logs should be written.")
@@ -73,7 +78,8 @@ type Runner struct {
 	level     string
 	port      int
 
-	logFiles map[string]*os.File
+	terminate bool
+	logFiles  map[string]*os.File
 
 	// Keep track of all the commands so we can close them.
 	cmds map[string]*gocmd.Cmd
@@ -81,7 +87,11 @@ type Runner struct {
 
 func (r *Runner) Run() error {
 	numWorkers := 2
+	// Defer functions are invoked in last in first out order.
+	// We want to close the processes before closing the files
 	defer r.closeFiles()
+	defer r.closeProcesses()
+
 	r.h = &subprocess.ExecHelper{
 		Log: log,
 	}
@@ -134,6 +144,21 @@ func (r *Runner) Run() error {
 		log.Error(err, "test didn't run successfully")
 	}
 
+	if !r.terminate {
+		log.Info("Waiting for sigterm to exit.")
+		sigs := make(chan os.Signal, 1)
+		// SIGSTOP and SIGTERM can't be caught; however SIGINT works as expected when using ctl-z
+		// to interrupt the process
+		signal.Notify(sigs, syscall.SIGINT)
+
+		s := <-sigs
+		log.Info("Recieved signal", "sig", s)
+	}
+
+	return nil
+}
+
+func (r *Runner) closeProcesses() {
 	log.Info("Cleaning up the e2e tests.")
 	// Stop all the subprocesses
 	for name, c := range r.cmds {
@@ -143,7 +168,6 @@ func (r *Runner) Run() error {
 			log.Error(err, "Error stopping subprocess", "process", name)
 		}
 	}
-	return nil
 }
 
 func (r *Runner) closeFiles() {

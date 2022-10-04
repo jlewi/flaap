@@ -15,7 +15,7 @@ _sym_db = _symbol_database.Default()
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n\x15\x66laap/taskstore.proto\x12\x0e\x66laap.v1alpha1"\x96\x01\n\x08Metadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x34\n\x06labels\x18\x02 \x03(\x0b\x32$.flaap.v1alpha1.Metadata.LabelsEntry\x12\x17\n\x0fresourceVersion\x18\x03 \x01(\t\x1a-\n\x0bLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"J\n\tCondition\x12\x0c\n\x04type\x18\x01 \x01(\t\x12/\n\x06status\x18\x02 \x01(\x0e\x32\x1f.flaap.v1alpha1.StatusCondition";\n\nTaskStatus\x12-\n\nconditions\x18\x01 \x03(\x0b\x32\x19.flaap.v1alpha1.Condition"\xd0\x01\n\x04Task\x12\x13\n\x0b\x61pi_version\x18\x01 \x01(\t\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12*\n\x08metadata\x18\x03 \x01(\x0b\x32\x18.flaap.v1alpha1.Metadata\x12(\n\x05input\x18\x04 \x01(\x0b\x32\x19.flaap.v1alpha1.TaskInput\x12*\n\x06status\x18\x05 \x01(\x0b\x32\x1a.flaap.v1alpha1.TaskStatus\x12\x0e\n\x06result\x18\x06 \x01(\x0c\x12\x13\n\x0bgroup_nonce\x18\x07 \x01(\t"/\n\tTaskInput\x12\x10\n\x08\x66unction\x18\x01 \x01(\x0c\x12\x10\n\x08\x61rgument\x18\x02 \x01(\x0c"3\n\rCreateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"4\n\x0e\x43reateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1a\n\nGetRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"1\n\x0bGetResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task".\n\x0bListRequest\x12\x11\n\tworker_id\x18\x01 \x01(\t\x12\x0c\n\x04\x64one\x18\x02 \x01(\x08"3\n\x0cListResponse\x12#\n\x05items\x18\x01 \x03(\x0b\x32\x14.flaap.v1alpha1.Task"\x7f\n\x08Selector\x12?\n\x0cmatch_labels\x18\x01 \x03(\x0b\x32).flaap.v1alpha1.Selector.MatchLabelsEntry\x1a\x32\n\x10MatchLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"F\n\rUpdateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task\x12\x11\n\tworker_id\x18\x02 \x01(\t"4\n\x0eUpdateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1d\n\rDeleteRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"\x10\n\x0e\x44\x65leteResponse"\x0f\n\rStatusRequest"\x95\x02\n\x0eStatusResponse\x12O\n\x11group_assignments\x18\x01 \x03(\x0b\x32\x34.flaap.v1alpha1.StatusResponse.GroupAssignmentsEntry\x12\x45\n\x0ctask_metrics\x18\x02 \x03(\x0b\x32/.flaap.v1alpha1.StatusResponse.TaskMetricsEntry\x1a\x37\n\x15GroupAssignmentsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a\x32\n\x10TaskMetricsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x05:\x02\x38\x01"\xb7\x01\n\nStoredData\x12#\n\x05tasks\x18\x01 \x03(\x0b\x32\x14.flaap.v1alpha1.Task\x12K\n\x11group_assignments\x18\x02 \x03(\x0b\x32\x30.flaap.v1alpha1.StoredData.GroupAssignmentsEntry\x1a\x37\n\x15GroupAssignmentsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*3\n\x0fStatusCondition\x12\x0b\n\x07UNKNOWN\x10\x00\x12\t\n\x05\x46\x41LSE\x10\x01\x12\x08\n\x04TRUE\x10\x02\x32\xc1\x03\n\x0cTasksService\x12I\n\x06\x43reate\x12\x1d.flaap.v1alpha1.CreateRequest\x1a\x1e.flaap.v1alpha1.CreateResponse"\x00\x12@\n\x03Get\x12\x1a.flaap.v1alpha1.GetRequest\x1a\x1b.flaap.v1alpha1.GetResponse"\x00\x12\x43\n\x04List\x12\x1b.flaap.v1alpha1.ListRequest\x1a\x1c.flaap.v1alpha1.ListResponse"\x00\x12I\n\x06Update\x12\x1d.flaap.v1alpha1.UpdateRequest\x1a\x1e.flaap.v1alpha1.UpdateResponse"\x00\x12I\n\x06\x44\x65lete\x12\x1d.flaap.v1alpha1.DeleteRequest\x1a\x1e.flaap.v1alpha1.DeleteResponse"\x00\x12I\n\x06Status\x12\x1d.flaap.v1alpha1.StatusRequest\x1a\x1e.flaap.v1alpha1.StatusResponse"\x00\x42+Z)github.com/jlewi/flaap/go/protos/v1alpha1b\x06proto3'
+    b'\n\x15\x66laap/taskstore.proto\x12\x0e\x66laap.v1alpha1"\x96\x01\n\x08Metadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x34\n\x06labels\x18\x02 \x03(\x0b\x32$.flaap.v1alpha1.Metadata.LabelsEntry\x12\x17\n\x0fresourceVersion\x18\x03 \x01(\t\x1a-\n\x0bLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"J\n\tCondition\x12\x0c\n\x04type\x18\x01 \x01(\t\x12/\n\x06status\x18\x02 \x01(\x0e\x32\x1f.flaap.v1alpha1.StatusCondition";\n\nTaskStatus\x12-\n\nconditions\x18\x01 \x03(\x0b\x32\x19.flaap.v1alpha1.Condition"\x91\x02\n\x04Task\x12\x13\n\x0b\x61pi_version\x18\x01 \x01(\t\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12*\n\x08metadata\x18\x03 \x01(\x0b\x32\x18.flaap.v1alpha1.Metadata\x12(\n\x05input\x18\x04 \x01(\x0b\x32\x19.flaap.v1alpha1.TaskInput\x12*\n\x06output\x18\x05 \x01(\x0b\x32\x1a.flaap.v1alpha1.TaskOutput\x12*\n\x06status\x18\x06 \x01(\x0b\x32\x1a.flaap.v1alpha1.TaskStatus\x12\x0e\n\x06result\x18\x07 \x01(\x0c\x12\x13\n\x0bgroup_nonce\x18\x08 \x01(\t\x12\x13\n\x0bgroup_index\x18\t \x01(\x05"\xa0\x01\n\tTaskInput\x12\x16\n\x0c\x63reate_value\x18\x01 \x01(\x0cH\x00\x12\x15\n\x0b\x63reate_call\x18\x02 \x01(\x0cH\x00\x12\x17\n\rcreate_struct\x18\x03 \x01(\x0cH\x00\x12\x1a\n\x10\x63reate_selection\x18\x04 \x01(\x0cH\x00\x12\x11\n\x07\x63ompute\x18\x05 \x01(\x0cH\x00\x12\x11\n\x07\x64ispose\x18\x06 \x01(\x0cH\x00\x42\t\n\x07request">\n\nTaskOutput\x12\x11\n\x07\x63ompute\x18\x01 \x01(\x0cH\x00\x12\x11\n\x07\x64ispose\x18\x02 \x01(\x0cH\x00\x42\n\n\x08response"3\n\rCreateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"4\n\x0e\x43reateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1a\n\nGetRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"1\n\x0bGetResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task".\n\x0bListRequest\x12\x11\n\tworker_id\x18\x01 \x01(\t\x12\x0c\n\x04\x64one\x18\x02 \x01(\x08"3\n\x0cListResponse\x12#\n\x05items\x18\x01 \x03(\x0b\x32\x14.flaap.v1alpha1.Task"\x7f\n\x08Selector\x12?\n\x0cmatch_labels\x18\x01 \x03(\x0b\x32).flaap.v1alpha1.Selector.MatchLabelsEntry\x1a\x32\n\x10MatchLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"F\n\rUpdateRequest\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task\x12\x11\n\tworker_id\x18\x02 \x01(\t"4\n\x0eUpdateResponse\x12"\n\x04task\x18\x01 \x01(\x0b\x32\x14.flaap.v1alpha1.Task"\x1d\n\rDeleteRequest\x12\x0c\n\x04name\x18\x01 \x01(\t"\x10\n\x0e\x44\x65leteResponse"\x0f\n\rStatusRequest"\x95\x02\n\x0eStatusResponse\x12O\n\x11group_assignments\x18\x01 \x03(\x0b\x32\x34.flaap.v1alpha1.StatusResponse.GroupAssignmentsEntry\x12\x45\n\x0ctask_metrics\x18\x02 \x03(\x0b\x32/.flaap.v1alpha1.StatusResponse.TaskMetricsEntry\x1a\x37\n\x15GroupAssignmentsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a\x32\n\x10TaskMetricsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x05:\x02\x38\x01"\xb7\x01\n\nStoredData\x12#\n\x05tasks\x18\x01 \x03(\x0b\x32\x14.flaap.v1alpha1.Task\x12K\n\x11group_assignments\x18\x02 \x03(\x0b\x32\x30.flaap.v1alpha1.StoredData.GroupAssignmentsEntry\x1a\x37\n\x15GroupAssignmentsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*3\n\x0fStatusCondition\x12\x0b\n\x07UNKNOWN\x10\x00\x12\t\n\x05\x46\x41LSE\x10\x01\x12\x08\n\x04TRUE\x10\x02\x32\xc1\x03\n\x0cTasksService\x12I\n\x06\x43reate\x12\x1d.flaap.v1alpha1.CreateRequest\x1a\x1e.flaap.v1alpha1.CreateResponse"\x00\x12@\n\x03Get\x12\x1a.flaap.v1alpha1.GetRequest\x1a\x1b.flaap.v1alpha1.GetResponse"\x00\x12\x43\n\x04List\x12\x1b.flaap.v1alpha1.ListRequest\x1a\x1c.flaap.v1alpha1.ListResponse"\x00\x12I\n\x06Update\x12\x1d.flaap.v1alpha1.UpdateRequest\x1a\x1e.flaap.v1alpha1.UpdateResponse"\x00\x12I\n\x06\x44\x65lete\x12\x1d.flaap.v1alpha1.DeleteRequest\x1a\x1e.flaap.v1alpha1.DeleteResponse"\x00\x12I\n\x06Status\x12\x1d.flaap.v1alpha1.StatusRequest\x1a\x1e.flaap.v1alpha1.StatusResponse"\x00\x42+Z)github.com/jlewi/flaap/go/protos/v1alpha1b\x06proto3'
 )
 
 _STATUSCONDITION = DESCRIPTOR.enum_types_by_name["StatusCondition"]
@@ -31,6 +31,7 @@ _CONDITION = DESCRIPTOR.message_types_by_name["Condition"]
 _TASKSTATUS = DESCRIPTOR.message_types_by_name["TaskStatus"]
 _TASK = DESCRIPTOR.message_types_by_name["Task"]
 _TASKINPUT = DESCRIPTOR.message_types_by_name["TaskInput"]
+_TASKOUTPUT = DESCRIPTOR.message_types_by_name["TaskOutput"]
 _CREATEREQUEST = DESCRIPTOR.message_types_by_name["CreateRequest"]
 _CREATERESPONSE = DESCRIPTOR.message_types_by_name["CreateResponse"]
 _GETREQUEST = DESCRIPTOR.message_types_by_name["GetRequest"]
@@ -119,6 +120,17 @@ TaskInput = _reflection.GeneratedProtocolMessageType(
     },
 )
 _sym_db.RegisterMessage(TaskInput)
+
+TaskOutput = _reflection.GeneratedProtocolMessageType(
+    "TaskOutput",
+    (_message.Message,),
+    {
+        "DESCRIPTOR": _TASKOUTPUT,
+        "__module__": "flaap.taskstore_pb2"
+        # @@protoc_insertion_point(class_scope:flaap.v1alpha1.TaskOutput)
+    },
+)
+_sym_db.RegisterMessage(TaskOutput)
 
 CreateRequest = _reflection.GeneratedProtocolMessageType(
     "CreateRequest",
@@ -329,8 +341,8 @@ if _descriptor._USE_C_DESCRIPTORS == False:
     _STATUSRESPONSE_TASKMETRICSENTRY._serialized_options = b"8\001"
     _STOREDDATA_GROUPASSIGNMENTSENTRY._options = None
     _STOREDDATA_GROUPASSIGNMENTSENTRY._serialized_options = b"8\001"
-    _STATUSCONDITION._serialized_start = 1665
-    _STATUSCONDITION._serialized_end = 1716
+    _STATUSCONDITION._serialized_start = 1908
+    _STATUSCONDITION._serialized_end = 1959
     _METADATA._serialized_start = 42
     _METADATA._serialized_end = 192
     _METADATA_LABELSENTRY._serialized_start = 147
@@ -340,45 +352,47 @@ if _descriptor._USE_C_DESCRIPTORS == False:
     _TASKSTATUS._serialized_start = 270
     _TASKSTATUS._serialized_end = 329
     _TASK._serialized_start = 332
-    _TASK._serialized_end = 540
-    _TASKINPUT._serialized_start = 542
-    _TASKINPUT._serialized_end = 589
-    _CREATEREQUEST._serialized_start = 591
-    _CREATEREQUEST._serialized_end = 642
-    _CREATERESPONSE._serialized_start = 644
-    _CREATERESPONSE._serialized_end = 696
-    _GETREQUEST._serialized_start = 698
-    _GETREQUEST._serialized_end = 724
-    _GETRESPONSE._serialized_start = 726
-    _GETRESPONSE._serialized_end = 775
-    _LISTREQUEST._serialized_start = 777
-    _LISTREQUEST._serialized_end = 823
-    _LISTRESPONSE._serialized_start = 825
-    _LISTRESPONSE._serialized_end = 876
-    _SELECTOR._serialized_start = 878
-    _SELECTOR._serialized_end = 1005
-    _SELECTOR_MATCHLABELSENTRY._serialized_start = 955
-    _SELECTOR_MATCHLABELSENTRY._serialized_end = 1005
-    _UPDATEREQUEST._serialized_start = 1007
-    _UPDATEREQUEST._serialized_end = 1077
-    _UPDATERESPONSE._serialized_start = 1079
-    _UPDATERESPONSE._serialized_end = 1131
-    _DELETEREQUEST._serialized_start = 1133
-    _DELETEREQUEST._serialized_end = 1162
-    _DELETERESPONSE._serialized_start = 1164
-    _DELETERESPONSE._serialized_end = 1180
-    _STATUSREQUEST._serialized_start = 1182
-    _STATUSREQUEST._serialized_end = 1197
-    _STATUSRESPONSE._serialized_start = 1200
-    _STATUSRESPONSE._serialized_end = 1477
-    _STATUSRESPONSE_GROUPASSIGNMENTSENTRY._serialized_start = 1370
-    _STATUSRESPONSE_GROUPASSIGNMENTSENTRY._serialized_end = 1425
-    _STATUSRESPONSE_TASKMETRICSENTRY._serialized_start = 1427
-    _STATUSRESPONSE_TASKMETRICSENTRY._serialized_end = 1477
-    _STOREDDATA._serialized_start = 1480
-    _STOREDDATA._serialized_end = 1663
-    _STOREDDATA_GROUPASSIGNMENTSENTRY._serialized_start = 1370
-    _STOREDDATA_GROUPASSIGNMENTSENTRY._serialized_end = 1425
-    _TASKSSERVICE._serialized_start = 1719
-    _TASKSSERVICE._serialized_end = 2168
+    _TASK._serialized_end = 605
+    _TASKINPUT._serialized_start = 608
+    _TASKINPUT._serialized_end = 768
+    _TASKOUTPUT._serialized_start = 770
+    _TASKOUTPUT._serialized_end = 832
+    _CREATEREQUEST._serialized_start = 834
+    _CREATEREQUEST._serialized_end = 885
+    _CREATERESPONSE._serialized_start = 887
+    _CREATERESPONSE._serialized_end = 939
+    _GETREQUEST._serialized_start = 941
+    _GETREQUEST._serialized_end = 967
+    _GETRESPONSE._serialized_start = 969
+    _GETRESPONSE._serialized_end = 1018
+    _LISTREQUEST._serialized_start = 1020
+    _LISTREQUEST._serialized_end = 1066
+    _LISTRESPONSE._serialized_start = 1068
+    _LISTRESPONSE._serialized_end = 1119
+    _SELECTOR._serialized_start = 1121
+    _SELECTOR._serialized_end = 1248
+    _SELECTOR_MATCHLABELSENTRY._serialized_start = 1198
+    _SELECTOR_MATCHLABELSENTRY._serialized_end = 1248
+    _UPDATEREQUEST._serialized_start = 1250
+    _UPDATEREQUEST._serialized_end = 1320
+    _UPDATERESPONSE._serialized_start = 1322
+    _UPDATERESPONSE._serialized_end = 1374
+    _DELETEREQUEST._serialized_start = 1376
+    _DELETEREQUEST._serialized_end = 1405
+    _DELETERESPONSE._serialized_start = 1407
+    _DELETERESPONSE._serialized_end = 1423
+    _STATUSREQUEST._serialized_start = 1425
+    _STATUSREQUEST._serialized_end = 1440
+    _STATUSRESPONSE._serialized_start = 1443
+    _STATUSRESPONSE._serialized_end = 1720
+    _STATUSRESPONSE_GROUPASSIGNMENTSENTRY._serialized_start = 1613
+    _STATUSRESPONSE_GROUPASSIGNMENTSENTRY._serialized_end = 1668
+    _STATUSRESPONSE_TASKMETRICSENTRY._serialized_start = 1670
+    _STATUSRESPONSE_TASKMETRICSENTRY._serialized_end = 1720
+    _STOREDDATA._serialized_start = 1723
+    _STOREDDATA._serialized_end = 1906
+    _STOREDDATA_GROUPASSIGNMENTSENTRY._serialized_start = 1613
+    _STOREDDATA_GROUPASSIGNMENTSENTRY._serialized_end = 1668
+    _TASKSSERVICE._serialized_start = 1962
+    _TASKSSERVICE._serialized_end = 2411
 # @@protoc_insertion_point(module_scope)
