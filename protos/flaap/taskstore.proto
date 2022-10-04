@@ -51,17 +51,6 @@ message Task {
 }
 
 message TaskInput {
-  // TODO(https://github.com/jlewi/flaap/issues/22): Get rid of function and argument fields.
-  // 
-  // The value represents the function to be executed. It is the result of tracing
-  // the code annotated with tf.computation and turning it into an AST.
-  // function is a serialized tensorflow_federated.v0.Value 
-  bytes function = 1;
-
-  // Optional the argument to be passed to the function
-  // function is a serialized tensorflow_federated.v0.Value 
-  bytes argument = 2;
-
   // ExecutorRequest encodes the request proto in 
     // https://github.com/tensorflow/federated/blob/a6506385def304c260a424b29e5b34c6d905760e/tensorflow_federated/proto/v0/executor.proto
     // The serialized version of the proto is stored as bytes.
@@ -69,12 +58,12 @@ message TaskInput {
     // would require generating the TFF protos client libraries in whichever language we use (e.g GoLang). That would be better
     // but for now we punted on trying to plugging into TFF's build process to build golang protos. 
   oneof request {
-    bytes create_value = 4;
-    bytes create_call = 5;
-    bytes create_struct = 6;
-    bytes create_selection = 7;
-    bytes compute = 8;
-    bytes dispose = 9;
+    bytes create_value = 1;
+    bytes create_call = 2;
+    bytes create_struct = 3;
+    bytes create_selection = 4;
+    bytes compute = 5;
+    bytes dispose = 6;
   } 
 }
 
