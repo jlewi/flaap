@@ -3,6 +3,7 @@
 from tensorflow_federated.python.common_libs import py_typecheck, tracing
 from tensorflow_federated.python.core.impl.executors import executor_base
 
+
 class StatefulWrapper:
     """A wrapper around a target executor to keep track of state.
 

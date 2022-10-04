@@ -2,7 +2,7 @@ import asyncio
 
 import tensorflow as tf
 import tensorflow_federated
-from flaap.tff import stateful_wraper
+from flaap.tff import stateful_wrapper
 from tensorflow_federated.python.core.impl.computation import computation_impl
 from tensorflow_federated.python.core.impl.executors import (
     eager_tf_executor,
@@ -25,7 +25,7 @@ else:
 def test_call():
     # Run a simple test. Verify that we can properly embed a simple
     # computation and then compute the value using the TFEager executor
-    wrapper = stateful_wraper.StatefulWrapper(
+    wrapper = stateful_wrapper.StatefulWrapper(
         target_executor=eager_tf_executor.EagerTFExecutor()
     )
 
@@ -48,7 +48,7 @@ def test_call():
 def test_call_with_arg():
     # Run a simple test. Verify that we can properly embed a simple
     # computation and then compute the value using the TFEager executor
-    wrapper = stateful_wraper.StatefulWrapper(
+    wrapper = stateful_wrapper.StatefulWrapper(
         target_executor=eager_tf_executor.EagerTFExecutor()
     )
 
