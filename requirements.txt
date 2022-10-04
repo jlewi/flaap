@@ -2,3 +2,4 @@ autoflake
 black
 fire
 pytest
+tenacity
