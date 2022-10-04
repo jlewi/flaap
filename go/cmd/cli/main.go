@@ -4,6 +4,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+
 	"github.com/go-logr/logr"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
 	"github.com/jlewi/p22h/backend/pkg/logging"
@@ -12,8 +15,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
-	"io"
-	"os"
 )
 
 var (
