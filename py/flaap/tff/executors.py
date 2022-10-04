@@ -115,10 +115,6 @@ class TaskStoreExecutor(executor_base.Executor):
     @tracing.trace(span=True)
     async def create_value(self, value, type_spec=None):
         """Create value creates the value in the executor"""
-        # TODO(jlewi): The remote executor sets the executor id. Is that something we need to do?
-        # https://github.com/tensorflow/federated/blob/0cde95aebfda9751a95c23a1e4c8e5482778658c/tensorflow_federated/python/core/impl/executors/remote_executor.py#L152
-        # self._check_has_executor_id()
-
         # Create a CreateValueRequest to store the request we want the worker to execute
         @tracing.trace
         def serialize_value():
@@ -281,33 +277,6 @@ def _is_retryable_grpc_error(error):
         grpc.StatusCode.UNAUTHENTICATED,
     }
     return isinstance(error, grpc.RpcError) and error.code() not in non_retryable_errors
-
-
-# TODO(https://github.com/jlewi/flaap/issues/22): I don't think this should be needed
-# anymore
-class TaskInputValue(executor_value_base.ExecutorValue):
-    """TaskInputValue is a wrapper around TFF values used for the output of create_value.
-
-    Executors expect to call create_value to embed values in the executor. Those functions
-    are expected to return subclasses of ExecutorValue which can then be passed along
-    to the create_call.
-
-    For the taskstore executor this just stores the arguments to create_value so
-    that serialization can happen when create_call is invoked.
-    """
-
-    def __init__(self, value, type_spec):
-        self.value = value
-        self.type_spec = type_spec
-
-    async def compute(self):
-        raise NotImplementedError(
-            "Compute is not expected to be called on TaskInputValue"
-        )
-
-    @property
-    def type_signature(self):
-        return self.type_spec
 
 
 class TaskValue(executor_value_base.ExecutorValue):

@@ -1,36 +1,7 @@
 """A wrapper for another executor that maintains state."""
 
-
 from tensorflow_federated.python.common_libs import py_typecheck, tracing
 from tensorflow_federated.python.core.impl.executors import executor_base
-
-# def _set_invalid_arg_err(context: grpc.ServicerContext, err):
-#   logging.error(traceback.format_exc())
-#   context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-#   context.set_details(str(err))
-
-
-# def _set_unknown_err(context: grpc.ServicerContext, err):
-#   logging.error(traceback.format_exc())
-#   context.set_code(grpc.StatusCode.UNKNOWN)
-#   context.set_details(str(err))
-
-
-# def _set_unavailable_error(context: grpc.ServicerContext, err):
-#   logging.error(traceback.format_exc())
-#   context.set_code(grpc.StatusCode.UNAVAILABLE)
-#   context.set_details(str(err))
-
-
-# def _propagate_grpc_code_err(context: grpc.ServicerContext, err: grpc.RpcError):
-#   logging.error(traceback.format_exc())
-#   context.set_code(err.code())
-#   context.set_details(str(err))
-
-
-# def _get_hashable_key(cardinalities: executor_factory.CardinalitiesType) -> str:
-#   return str(tuple(sorted((str(k), v) for k, v in cardinalities.items())))
-
 
 class StatefulWrapper:
     """A wrapper around a target executor to keep track of state.
@@ -120,30 +91,3 @@ class StatefulWrapper:
     def get_value(self, name):
         """Return the specified value"""
         return self._values[name]
-
-
-# class StatefulValue(executor_value_base.ExecutorValue):
-#   """Represent a stateful value."""
-#   def __init__(self, name: str, value):
-#       """Creates the value.
-#       Args:
-#         name: Name used to identify the value
-#         value: actual value
-#       """
-#       # py_typecheck.check_type(type_spec, computation_types.Type)
-#       # py_typecheck.check_type(executor, TaskStoreExecutor)
-#       self.name = name
-#       self._value = value
-#       # self._type_signature = type_spec
-
-#       # # Clean up the value and the memory associated with it on the remote
-#       # # worker when no references to it remain.
-#       # def finalizer(task_name, executor):
-#       #     executor._dispose(task_name)  # pylint: disable=protected-access
-
-#       # weakref.finalize(self, finalizer, name, executor)
-
-#   @property
-#   def type_signature(self):
-#     # TODO(jeremy): Is this right?
-#     return self._value.type_signature
