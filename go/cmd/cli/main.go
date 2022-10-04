@@ -80,6 +80,9 @@ func newGetStatusCmd() *cobra.Command {
 				}
 
 				status, err := client.Status(context.Background(), &v1alpha1.StatusRequest{})
+				if err != nil {
+					return errors.Wrapf(err, "status request failed")
+				}
 
 				b, err := popts.Marshal(status)
 
