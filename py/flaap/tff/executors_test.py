@@ -117,7 +117,6 @@ def test_create_call():
     assert request.argument_ref.id == "argument"
 
 
-# TODO(jeremy): Need a test for create_value
 def test_create_value():
     # Test that we can create a value representing a computation
     @tensorflow_computation.tf_computation(tf.int32)
@@ -187,3 +186,41 @@ def test_compute(wait_for_task):
     # Output should be the actual materialized value
     actual = asyncio.run(executor._compute("sometask"))
     assert actual == 10
+
+def test_create_struct():    
+    channel = mock.MagicMock(spec=grpc.Channel)
+    executor = executors.TaskStoreExecutor(channel=channel)
+    
+    # Set group_index so we can verify it gets incremented
+    executor._group_index = 5
+    # Construct the remotevalue task to be returned
+    response = taskstore_pb2.CreateResponse()
+    response.task.metadata.name = "returnedname"
+
+    fake = FakeRequestFn(response)
+    executor._request_fn = fake
+
+    # Create the values to pass to create_struct
+    type_signature = computation_types.TensorType(tf.int32)
+    value_1 = executors.TaskValue("task1", type_signature, executor)
+    value_2 = executors.TaskValue("task2",type_signature, executor)
+
+
+    result = asyncio.run(executor.create_struct([value_1, value_2]))
+
+    assert result.name == "returnedname"
+    assert result.type_signature == computation_types.StructType([tf.int32, tf.int32])
+
+    actual_task = executor._request_fn.request.task
+
+    assert actual_task.metadata.name != ""
+    assert actual_task.group_nonce == executor.group_nonce
+    assert actual_task.group_index == 6
+    assert len(actual_task.input.create_struct) > 0
+
+    # Verify group_index got incremented
+    assert executor._group_index == 6
+
+    # TODO(jlewi): Are there additional assertions we can run on the CreateStructRequest proto
+    request = executor_pb2.CreateStructRequest()
+    request.ParseFromString(actual_task.input.create_struct)

@@ -66,6 +66,16 @@ class TaskHandler:
                 arg_name,
             )
             await self._wrapper.create_call(task.metadata.name, comp_name, arg_name)
+        elif task.input.HasField("create_struct"):
+            request = executor_pb2.CreateStructRequest()
+            request.ParseFromString(task.input.create_struct)
+
+            logging.info(
+                "Create struct %s",
+                task.metadata.name,
+            )
+
+            await self._wrapper.create_struct(task.metadata.name, request.element)
         elif task.input.HasField("compute"):
             request = executor_pb2.ComputeRequest()
             request.ParseFromString(task.input.compute)

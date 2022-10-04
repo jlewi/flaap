@@ -2,7 +2,8 @@
 
 from tensorflow_federated.python.common_libs import py_typecheck, tracing
 from tensorflow_federated.python.core.impl.executors import executor_base
-
+from tensorflow_federated.proto.v0 import executor_pb2
+from tensorflow_federated.python.common_libs import structure
 
 class StatefulWrapper:
     """A wrapper around a target executor to keep track of state.
@@ -71,11 +72,19 @@ class StatefulWrapper:
         self._values[name] = await self._target_executor.create_call(comp, arg)
 
     @tracing.trace(span=True)
-    async def create_struct(self, name, element_names):
-        elements = []
-        for n in element_names:
-            elements = elements.append(self._values[n])
-        self._values[name] = self._target_executor.create_struct(elements)
+    async def create_struct(self, name, elements: list[executor_pb2.CreateStructRequest.Element]):
+        # Create a list of tuples where each tuple is the field name and value for an element of
+        # the struct. If its an unamed field the value will be none.
+        fields = []
+        for e in elements:
+          e_name = None
+          if e.name:
+            e_name =  str(e.name)
+          fields.append((e_name, self._values[e.value_ref.id]))
+
+        struct = structure.Struct(fields)
+
+        self._values[name] = await self._target_executor.create_struct(struct)
 
     @tracing.trace(span=True)
     async def create_selection(self, name, source_name, index):

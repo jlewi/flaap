@@ -86,7 +86,7 @@ type Runner struct {
 }
 
 func (r *Runner) Run() error {
-	numWorkers := 2
+	numWorkers := 3
 	// Defer functions are invoked in last in first out order.
 	// We want to close the processes before closing the files
 	defer r.closeFiles()
@@ -288,7 +288,7 @@ func (r *Runner) startCoordinator() <-chan gocmd.Status {
 	opts := gocmd.Options{
 		Streaming: true,
 	}
-	cmd := gocmd.NewCmdOptions(opts, "python3", "-m", "flaap.testing.fed_average", "run", fmt.Sprintf("--port=localhost:%v", r.port))
+	cmd := gocmd.NewCmdOptions(opts, "python3", "-m", "flaap.testing.fed_average", "run", fmt.Sprintf("--taskstore=localhost:%v", r.port))
 	cmd.Env = []string{"PYTHONPATH=" + os.Getenv("PYTHONPATH")}
 	r.cmds["coordinator"] = cmd
 	log.Info("Starting coordinator program", "logsFile", f.Name())

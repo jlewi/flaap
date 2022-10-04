@@ -18,7 +18,8 @@ def find_free_port():
 
 
 class NotDoneException(Exception):
-    pass
+    def __init__(self, task_name):
+        self.task_name = task_name
 
 
 def _is_retryable(exc):
@@ -27,11 +28,7 @@ def _is_retryable(exc):
     return _is_retryable_grpc_error(exc)
 
 
-@tenacity.retry(
-    retry=tenacity.retry_if_exception(_is_retryable),
-    stop=tenacity.stop_after_delay(300),
-)
-def wait_for_task(stub, task_name):
+def wait_for_task(stub, task_name, max_wait_seconds=60):
     """Wait for task waits for the task to complete.
 
     Args:
@@ -42,14 +39,20 @@ def wait_for_task(stub, task_name):
       Task:  Final task
     """
     logging.debug("Getting task =%s", task_name)
-    request = taskstore_pb2.GetRequest(name=task_name)
-    response = stub.Get(request)
 
-    if conditions.is_done(response.task):
-        return response.task
-    else:
-        raise NotDoneException()
+    @tenacity.retry(
+        retry=tenacity.retry_if_exception(_is_retryable),
+        stop=tenacity.stop_after_delay(max_wait_seconds),
+    )
+    def _wait():
+        request = taskstore_pb2.GetRequest(name=task_name)
+        response = stub.Get(request)
 
+        if conditions.is_done(response.task):
+            return response.task
+        else:
+            raise NotDoneException(task_name)
+    return _wait()
 
 def _is_retryable_grpc_error(error):
     """Predicate defining what is a retryable gRPC error."""

@@ -15,6 +15,7 @@ from tensorflow_federated.python.core.impl.executors import (
     executors_errors,
 )
 from tensorflow_federated.python.core.impl.types import computation_types, placements
+from tensorflow_federated.python.common_libs import structure
 
 # N.B looks like value_serialization gets moved to executor_serialization in 0.34
 if tensorflow_federated.__version__ < "0.34.0":
@@ -198,21 +199,45 @@ class TaskStoreExecutor(executor_base.Executor):
 
     @tracing.trace(span=True)
     async def create_struct(self, elements):
-        # Currently, create_struct isn't implemented because it doesn't seem like this would be needed in
-        # a scenario where workers call into the control plane to request and asynchronously process tasks.
-        # In this asynchronous mode it doesn't seem like it makes sense to embed a struct in a remote worker
-        # and then in a subsequent create a computation that references it. It seems like this should all be
-        # bundled into a single task to be claimed and processed by the worker.
-        raise NotImplementedError(
-            "create_struct isn't supported with asynchronous execution via the task store"
+        constructed_anon_tuple = structure.from_container(elements)
+        proto_elem = []
+        type_elem = []
+        for k, v in structure.iter_elements(constructed_anon_tuple):
+            py_typecheck.check_type(v, TaskValue)
+            proto_elem.append(
+                executor_pb2.CreateStructRequest.Element(
+                    name=(k if k else None), value_ref=v.value_ref()))
+            type_elem.append((k, v.type_signature) if k else v.type_signature)
+        result_type = computation_types.StructType(type_elem)
+        create_struct_request = executor_pb2.CreateStructRequest(element=proto_elem)
+        
+        self._group_index += 1
+
+        task = taskstore_pb2.Task()
+        task.metadata.name = uuid.uuid4().hex
+        task.input.create_struct = create_struct_request.SerializeToString()
+        task.group_nonce = self._group_nonce
+        task.group_index = self._group_index
+
+        logging.info(
+            "Creating task %s to create struct; group %s index %s",
+            task.metadata.name,            
+            task.group_nonce,
+            task.group_index,
         )
+
+        # Create the task.
+        create_task_request = taskstore_pb2.CreateRequest(task=task)
+        response = self._request_fn(self._stub.Create, create_task_request)
+        py_typecheck.check_type(response, taskstore_pb2.CreateResponse)
+
+        # Create a reference to this value using the task name
+        return TaskValue(response.task.metadata.name, result_type, self)
+
 
     @tracing.trace(span=True)
     async def create_selection(self, source, index):
-        # Currently, create_selection isn't implemented because it doesn't seem like this would be needed in
-        # a scenario where workers call into the control plane to request and asynchronously process tasks.
-        # In this asynchronous mode it doesn't seem like it makes sense to create a selection in a remote worker
-        # and try to asynchronously process it.
+        # TODO(jeremy): This eed to be implemented
         raise NotImplementedError(
             "create_selection isn't supported with asynchronous execution via the task store"
         )

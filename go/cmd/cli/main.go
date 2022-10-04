@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
@@ -20,6 +19,10 @@ import (
 
 var (
 	log logr.Logger
+)
+
+const (
+	defaultAPIEndpoint = "localhost:8081"
 )
 
 func newRootCmd() *cobra.Command {
@@ -42,25 +45,25 @@ func newRootCmd() *cobra.Command {
 }
 
 func newGetCmd() *cobra.Command {
-	var endpoint string
-	var workerId string
-	var done bool
 	cmd := &cobra.Command{
-		Use:   "get",
+		Use:   "get <resource>",
 		Args:  cobra.MatchAll(cobra.MinimumNArgs(1), cobra.MaximumNArgs(2)),
 		Short: "Get a resource",
 		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Fprintf(os.Stdout, "get requires a resource to be specified")
+		},
+	}
+	return cmd
+}
+
+func newGetStatusCmd() *cobra.Command {
+	var endpoint string
+	cmd := &cobra.Command{
+		Use:   "status",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "Get taskstore status",
+		Run: func(cmd *cobra.Command, args []string) {
 			err := func(out io.Writer) error {
-				resource := strings.ToLower(args[0])
-
-				if resource != "tasks" {
-					return errors.Errorf("Unknown resource: %v", resource)
-				}
-
-				name := ""
-				if len(args) == 2 {
-					name = args[1]
-				}
 				var opts []grpc.DialOption
 				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 				conn, err := grpc.Dial(endpoint, opts...)
@@ -70,6 +73,64 @@ func newGetCmd() *cobra.Command {
 				defer conn.Close()
 
 				client := v1alpha1.NewTasksServiceClient(conn)
+
+				popts := protojson.MarshalOptions{
+					Multiline: true,
+					Indent:    "",
+				}
+
+				status, err := client.Status(context.Background(), &v1alpha1.StatusRequest{})
+				if err != nil {
+					return errors.Wrapf(err, "status request failed")
+				}
+
+				b, err := popts.Marshal(status)
+
+				if err != nil {
+					return errors.Wrapf(err, "Failed to marshal response to json")
+				}
+				fmt.Fprintf(out, "%v\n", string(b))
+				if err != nil {
+					return errors.Wrapf(err, "Failed to get taskstore status")
+				}
+
+				return nil
+			}(os.Stdout)
+			if err != nil {
+				log.Error(err, "Error getting taskstore status")
+				os.Exit(1)
+			}
+		},
+	}
+
+	cmd.Flags().StringVarP(&endpoint, "endpoint", "e", defaultAPIEndpoint, "The endpoint of the taskstore")
+	return cmd
+}
+
+func newGetTasksCmd() *cobra.Command {
+	var endpoint string
+	var workerId string
+	var done bool
+	cmd := &cobra.Command{
+		Use:   "tasks",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "Get tasks",
+		Run: func(cmd *cobra.Command, args []string) {
+			err := func(out io.Writer) error {
+				var opts []grpc.DialOption
+				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+				conn, err := grpc.Dial(endpoint, opts...)
+				if err != nil {
+					return errors.Wrapf(err, "Failed to connect to taskstore at %v", endpoint)
+				}
+				defer conn.Close()
+
+				client := v1alpha1.NewTasksServiceClient(conn)
+
+				name := ""
+				if len(args) == 1 {
+					name = args[0]
+				}
 
 				popts := protojson.MarshalOptions{
 					Multiline: true,
@@ -114,7 +175,6 @@ func newGetCmd() *cobra.Command {
 					}
 					fmt.Fprintf(out, "%v\n", string(b))
 				}
-
 				return nil
 			}(os.Stdout)
 			if err != nil {
@@ -123,7 +183,7 @@ func newGetCmd() *cobra.Command {
 			}
 		},
 	}
-	defaultAPIEndpoint := "localhost:8081"
+
 	cmd.Flags().StringVarP(&endpoint, "endpoint", "e", defaultAPIEndpoint, "The endpoint of the taskstore")
 	cmd.Flags().StringVarP(&workerId, "workerId", "", "", "Optional; if supplied only list tasks for this worker")
 	cmd.Flags().BoolVarP(&done, "done", "", true, "Whether to include done tasks or not")
@@ -132,7 +192,10 @@ func newGetCmd() *cobra.Command {
 
 func main() {
 	rootCmd := newRootCmd()
-	rootCmd.AddCommand(newGetCmd())
+	getCmd := newGetCmd()
+	getCmd.AddCommand(newGetTasksCmd())
+	getCmd.AddCommand(newGetStatusCmd())
+	rootCmd.AddCommand(getCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Printf("Command failed with error: %+v", err)
 		os.Exit(1)
