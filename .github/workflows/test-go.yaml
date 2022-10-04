@@ -1,5 +1,3 @@
-
-
 # A basic workflow for Go
 name: test-go
 on: [push]
@@ -10,8 +8,8 @@ defaults:
 jobs:
   test:
     name: golang test & build
-    # Must run on github hosted runners
     runs-on: [ubuntu-20.04]
+    container: node:14.16
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
