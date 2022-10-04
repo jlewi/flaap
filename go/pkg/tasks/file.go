@@ -103,7 +103,7 @@ func (s *FileStore) Create(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Tas
 
 	// Generate a unique resourceVersion
 	t.Metadata.ResourceVersion = uuid.New().String()
-	s.log.Info("Creating task", "task", name, "numTasks", len(s.data.Tasks))
+	s.log.Info("Creating task", "task", name)
 	s.data.Tasks[name] = t
 
 	if g, ok := s.data.GroupToTaskNames[group]; ok {
@@ -120,8 +120,6 @@ func (s *FileStore) Create(ctx context.Context, t *v1alpha1.Task) (*v1alpha1.Tas
 	}
 
 	err := s.persistNoLock()
-	// TODO(jeremy): log this at debug level
-	s.log.Info("Done creating task", "task", name, "numTasks", len(s.data.Tasks))
 	return t, err
 }
 

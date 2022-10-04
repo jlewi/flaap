@@ -15,7 +15,7 @@ class StatefulWrapper:
     Implementation is inspired by the ExecutorService:
     https://github.com/tensorflow/federated/blob/a6506385def304c260a424b29e5b34c6d905760e/tensorflow_federated/python/core/impl/executors/executor_service.py#L73
 
-    One differe is the wrapper doesn't maintain a mapping to multiple
+    One difference is the wrapper doesn't maintain a mapping to multiple
     executors corresponding to different cardinalities. If that's needed it should
     potentially be handled at a higher level.
 
