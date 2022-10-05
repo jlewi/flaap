@@ -8,14 +8,13 @@ import tensorflow_federated
 from absl import logging
 from flaap import conditions, networking, taskstore_pb2, taskstore_pb2_grpc
 from tensorflow_federated.proto.v0 import executor_pb2
-from tensorflow_federated.python.common_libs import py_typecheck, tracing
+from tensorflow_federated.python.common_libs import py_typecheck, structure, tracing
 from tensorflow_federated.python.core.impl.executors import (
     executor_base,
     executor_value_base,
     executors_errors,
 )
 from tensorflow_federated.python.core.impl.types import computation_types, placements
-from tensorflow_federated.python.common_libs import structure
 
 # N.B looks like value_serialization gets moved to executor_serialization in 0.34
 if tensorflow_federated.__version__ < "0.34.0":
@@ -206,11 +205,13 @@ class TaskStoreExecutor(executor_base.Executor):
             py_typecheck.check_type(v, TaskValue)
             proto_elem.append(
                 executor_pb2.CreateStructRequest.Element(
-                    name=(k if k else None), value_ref=v.value_ref()))
+                    name=(k if k else None), value_ref=v.value_ref()
+                )
+            )
             type_elem.append((k, v.type_signature) if k else v.type_signature)
         result_type = computation_types.StructType(type_elem)
         create_struct_request = executor_pb2.CreateStructRequest(element=proto_elem)
-        
+
         self._group_index += 1
 
         task = taskstore_pb2.Task()
@@ -221,7 +222,7 @@ class TaskStoreExecutor(executor_base.Executor):
 
         logging.info(
             "Creating task %s to create struct; group %s index %s",
-            task.metadata.name,            
+            task.metadata.name,
             task.group_nonce,
             task.group_index,
         )
@@ -233,7 +234,6 @@ class TaskStoreExecutor(executor_base.Executor):
 
         # Create a reference to this value using the task name
         return TaskValue(response.task.metadata.name, result_type, self)
-
 
     @tracing.trace(span=True)
     async def create_selection(self, source, index):

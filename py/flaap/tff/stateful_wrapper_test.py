@@ -3,6 +3,7 @@ import asyncio
 import tensorflow as tf
 import tensorflow_federated
 from flaap.tff import stateful_wrapper
+from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.python.core.impl.computation import computation_impl
 from tensorflow_federated.python.core.impl.executors import (
     eager_tf_executor,
@@ -12,7 +13,6 @@ from tensorflow_federated.python.core.impl.tensorflow_context import (
     tensorflow_computation,
 )
 from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.proto.v0 import executor_pb2
 
 # N.B looks like value_serialization gets moved to executor_serialization in 0.34
 if tensorflow_federated.__version__ < "0.34.0":
@@ -24,6 +24,7 @@ else:
 
 # N.B. The unittest for task_handler provides some additional coverage because it also
 # invokes the stateful_wrapper.
+
 
 def test_call():
     # Run a simple test. Verify that we can properly embed a simple
@@ -72,6 +73,7 @@ def test_call_with_arg():
     result = asyncio.run(wrapper.get_value("result").compute())
     assert result == 1010
 
+
 def test_create_struct_named():
     # Test create struct with named fields
     wrapper = stateful_wrapper.StatefulWrapper(
@@ -82,9 +84,10 @@ def test_create_struct_named():
 
     value_ref = executor_pb2.ValueRef(id="someval")
     elements = [executor_pb2.CreateStructRequest.Element(name="a", value_ref=value_ref)]
-    asyncio.run(wrapper.create_struct("result",  elements))
+    asyncio.run(wrapper.create_struct("result", elements))
     result = asyncio.run(wrapper.get_value("result").compute())
     assert result["a"] == 10
+
 
 def test_create_struct():
     # Test create struct with unnamed fields
@@ -96,6 +99,6 @@ def test_create_struct():
 
     value_ref = executor_pb2.ValueRef(id="someval")
     elements = [executor_pb2.CreateStructRequest.Element(value_ref=value_ref)]
-    asyncio.run(wrapper.create_struct("result",  elements))
+    asyncio.run(wrapper.create_struct("result", elements))
     result = asyncio.run(wrapper.get_value("result").compute())
     assert result[0] == 10

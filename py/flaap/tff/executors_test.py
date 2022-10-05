@@ -187,10 +187,11 @@ def test_compute(wait_for_task):
     actual = asyncio.run(executor._compute("sometask"))
     assert actual == 10
 
-def test_create_struct():    
+
+def test_create_struct():
     channel = mock.MagicMock(spec=grpc.Channel)
     executor = executors.TaskStoreExecutor(channel=channel)
-    
+
     # Set group_index so we can verify it gets incremented
     executor._group_index = 5
     # Construct the remotevalue task to be returned
@@ -203,8 +204,7 @@ def test_create_struct():
     # Create the values to pass to create_struct
     type_signature = computation_types.TensorType(tf.int32)
     value_1 = executors.TaskValue("task1", type_signature, executor)
-    value_2 = executors.TaskValue("task2",type_signature, executor)
-
+    value_2 = executors.TaskValue("task2", type_signature, executor)
 
     result = asyncio.run(executor.create_struct([value_1, value_2]))
 

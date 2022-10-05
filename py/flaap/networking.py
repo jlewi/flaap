@@ -52,7 +52,9 @@ def wait_for_task(stub, task_name, max_wait_seconds=60):
             return response.task
         else:
             raise NotDoneException(task_name)
+
     return _wait()
+
 
 def _is_retryable_grpc_error(error):
     """Predicate defining what is a retryable gRPC error."""

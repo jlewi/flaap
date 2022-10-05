@@ -1,7 +1,6 @@
 import asyncio
 from concurrent import futures
 from unittest import mock
-from xml.dom.minidom import Element
 
 import grpc
 import portpicker
@@ -39,23 +38,25 @@ def test_handle_task_create_value():
     stored = handler._wrapper._values["somefunc"]
     assert stored.type_signature == computation_types.FunctionType(None, tf.int32)
 
-def test_handle_task_create_struct():    
+
+def test_handle_task_create_struct():
     handler = task_handler.TaskHandler(mock.MagicMock())
 
     # Populate the wrapper with a value that will get references
     asyncio.run(handler._wrapper.create_value("someval", 10, tf.int32))
-    
+
     # Create a task
     task = taskstore_pb2.Task()
 
     value_ref = executor_pb2.ValueRef(id="someval")
     create_struct = executor_pb2.CreateStructRequest()
-    create_struct.element.append(executor_pb2.CreateStructRequest.Element(name="somefield", value_ref=value_ref))
-    
+    create_struct.element.append(
+        executor_pb2.CreateStructRequest.Element(name="somefield", value_ref=value_ref)
+    )
+
     task.metadata.name = "somestruct"
     task.input.create_struct = create_struct.SerializeToString()
 
-    
     asyncio.run(handler._handle_task(task))
 
     assert conditions.get(task, conditions.SUCCEEDED) == taskstore_pb2.TRUE
@@ -64,6 +65,7 @@ def test_handle_task_create_struct():
     stored = handler._wrapper._values["somestruct"]
     result = asyncio.run(stored.compute())
     assert result["somefield"] == 10
+
 
 def test_handle_task_create_call():
     @tensorflow_computation.tf_computation
