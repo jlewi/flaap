@@ -25,6 +25,13 @@ lint-go:
 test-go:
 	cd go && go test -v ./...
 
+lint-py:
+	autoflake -c -r \
+		--exclude *pb2.py,*pb2_grpc.py \
+		--remove-unused-variables \
+		--remove-all-unused-imports ./py
+	black --check ./py
+
 tidy-py:
   # Sort the imports; black doesn't appear to sort imports
 	isort ./py

@@ -1,0 +1,21 @@
+# A basic workflow for Go
+name: test-py
+on: [push]
+defaults:
+  run:
+    shell: bash -ieo pipefail {0}
+jobs:
+  test:
+    name: python test & build
+    runs-on: [ubuntu-20.04]
+    container: gcr.io/tensorflow-federated/remote-executor-service:0.32.0@sha256:82aa0520bc2ac4dea31eae486f26780f7220d8dcb2170c4333670fc1dd407b33
+    steps:
+      - uses: actions/checkout@v3
+      - name: prepare
+        run: pip3 install -r requirements.txt
+      - name: test
+        run: pytest ./py
+      - name: autoflake
+        run: autoflake -r --in-place --exclude *pb2.py,*pb2_grpc.py --remove-unused-variables --remove-all-unused-imports ./py
+      - name: black
+        run: black --check ./py
