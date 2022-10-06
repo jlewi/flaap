@@ -7,17 +7,8 @@ import (
 
 	"github.com/jlewi/flaap/go/cmd/commands"
 
-	"github.com/go-logr/logr"
 	"github.com/jlewi/p22h/backend/pkg/logging"
 	"github.com/spf13/cobra"
-)
-
-var (
-	log logr.Logger
-)
-
-const (
-	defaultAPIEndpoint = "localhost:8081"
 )
 
 func newRootCmd() *cobra.Command {
@@ -26,11 +17,10 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Short: "flapp CLI",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			newLogger, err := logging.InitLogger(level, !jsonLog)
+			_, err := logging.InitLogger(level, !jsonLog)
 			if err != nil {
 				panic(err)
 			}
-			log = *newLogger
 		},
 	}
 
