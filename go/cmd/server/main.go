@@ -4,20 +4,13 @@ package main
 import (
 	"fmt"
 
-	"net"
+	"github.com/jlewi/flaap/go/cmd/commands"
+
 	"os"
 
 	"github.com/go-logr/logr"
-	"github.com/jlewi/flaap/go/pkg/tasks"
-	"github.com/jlewi/flaap/go/protos/v1alpha1"
-	"github.com/pkg/errors"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
-
 	"github.com/jlewi/p22h/backend/pkg/logging"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
 )
 
 var (
@@ -40,7 +33,7 @@ func newRootCmd() *cobra.Command {
 			log.Info("logger initialized", "level", level, "jsonLogs", jsonLog)
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			err := run(port, fileName)
+			err := commands.RunServer(port, fileName)
 			if err != nil {
 				log.Error(err, "Error running grpc service")
 				os.Exit(1)
@@ -53,36 +46,6 @@ func newRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().BoolVarP(&jsonLog, "json-logs", "", true, "Enable json logging.")
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8081, "Port to serve on")
 	return rootCmd
-}
-
-func run(port int, fileName string) error {
-	fileStore, err := tasks.NewFileStore(fileName, log)
-
-	if err != nil {
-		return err
-	}
-
-	tasksServer, err := tasks.NewServer(fileStore, log)
-
-	if err != nil {
-		return err
-	}
-
-	grpcServer := grpc.NewServer()
-	v1alpha1.RegisterTasksServiceServer(grpcServer, tasksServer)
-
-	// Register reflection service on gRPC server.
-	reflection.Register(grpcServer)
-
-	// Register health check.
-	grpc_health_v1.RegisterHealthServer(grpcServer, health.NewServer())
-
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		return errors.Wrapf(err, "failed to listen: %v", err)
-	}
-	log.Info("Starting grpc service", "port", port)
-	return grpcServer.Serve(lis)
 }
 
 func main() {
