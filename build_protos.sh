@@ -88,3 +88,15 @@ protoc ${INCLUDE} \
 mv -f .build/protos/github.com/jlewi/flaap/go/protos/ \
     go/
 
+
+# Generate API descriptor. This generates a protocol buffer that represents
+# the contents of our protocol buffers
+# See: https://cloud.google.com/endpoints/docs/grpc/configure-endpoints
+# https://developers.google.com/protocol-buffers/docs/techniques#self-description
+OUTFILE=.build/protos/api_descriptor.pb
+protoc ${INCLUDE} \
+    --include_imports \
+    --include_source_info \
+    --descriptor_set_out=${OUTFILE} \
+    ${SRCS} ${TFF_SRCS}
+
