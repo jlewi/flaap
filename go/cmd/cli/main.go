@@ -32,8 +32,6 @@ func newRootCmd() *cobra.Command {
 func main() {
 	rootCmd := newRootCmd()
 	getCmd := commands.NewGetCmd()
-	getCmd.AddCommand(commands.NewGetTasksCmd())
-	getCmd.AddCommand(commands.NewGetStatusCmd())
 	rootCmd.AddCommand(getCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Printf("Command failed with error: %+v", err)
