@@ -2,9 +2,13 @@ package commands
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"os"
+
+	"google.golang.org/grpc/credentials"
 
 	"github.com/go-logr/zapr"
 	"github.com/jlewi/flaap/go/protos/v1alpha1"
@@ -30,11 +34,14 @@ func NewGetCmd() *cobra.Command {
 			fmt.Fprintf(os.Stdout, "get requires a resource to be specified")
 		},
 	}
+
+	cmd.AddCommand(NewGetTasksCmd())
+	cmd.AddCommand(NewGetStatusCmd())
 	return cmd
 }
 
 func NewGetStatusCmd() *cobra.Command {
-	var endpoint string
+	grpcFlags := &GRPCClientFlags{}
 	cmd := &cobra.Command{
 		Use:   "status",
 		Args:  cobra.MaximumNArgs(1),
@@ -42,11 +49,9 @@ func NewGetStatusCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			log := zapr.NewLogger(zap.L())
 			err := func(out io.Writer) error {
-				var opts []grpc.DialOption
-				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-				conn, err := grpc.Dial(endpoint, opts...)
+				conn, err := grpcFlags.NewConn()
 				if err != nil {
-					return errors.Wrapf(err, "Failed to connect to taskstore at %v", endpoint)
+					return err
 				}
 				defer conn.Close()
 
@@ -81,14 +86,16 @@ func NewGetStatusCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&endpoint, "endpoint", "e", defaultAPIEndpoint, "The endpoint of the taskstore")
+	grpcFlags.AddFlags(cmd)
 	return cmd
 }
 
 func NewGetTasksCmd() *cobra.Command {
-	var endpoint string
 	var workerId string
 	var done bool
+
+	grpcFlags := &GRPCClientFlags{}
+
 	cmd := &cobra.Command{
 		Use:   "tasks",
 		Args:  cobra.MaximumNArgs(1),
@@ -96,11 +103,9 @@ func NewGetTasksCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			log := zapr.NewLogger(zap.L())
 			err := func(out io.Writer) error {
-				var opts []grpc.DialOption
-				opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-				conn, err := grpc.Dial(endpoint, opts...)
+				conn, err := grpcFlags.NewConn()
 				if err != nil {
-					return errors.Wrapf(err, "Failed to connect to taskstore at %v", endpoint)
+					return err
 				}
 				defer conn.Close()
 
@@ -163,8 +168,65 @@ func NewGetTasksCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&endpoint, "endpoint", "e", defaultAPIEndpoint, "The endpoint of the taskstore")
 	cmd.Flags().StringVarP(&workerId, "workerId", "", "", "Optional; if supplied only list tasks for this worker")
 	cmd.Flags().BoolVarP(&done, "done", "", true, "Whether to include done tasks or not")
+
+	grpcFlags.AddFlags(cmd)
 	return cmd
+}
+
+type GRPCClientFlags struct {
+	UseTLS     bool
+	RootCA     string
+	SkipVerify bool
+	ServerName string
+	Endpoint   string
+}
+
+func (f *GRPCClientFlags) AddFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&f.Endpoint, "endpoint", "e", defaultAPIEndpoint, "The endpoint of the taskstore")
+	cmd.Flags().BoolVarP(&f.UseTLS, "use-tls", "", true, "Whether to use TLS to connect to the server")
+	cmd.Flags().StringVarP(&f.RootCA, "root-ca", "", "", "CA file to use for validating client certs")
+	cmd.Flags().StringVarP(&f.ServerName, "server-name", "", "", "The servername to use to validate the certificate")
+	cmd.Flags().BoolVarP(&f.SkipVerify, "insecure-skip-verify", "", false, "Whether to verify the server's certificate")
+}
+
+// NewConn creates a new connection with the given flogs
+func (f *GRPCClientFlags) NewConn() (*grpc.ClientConn, error) {
+	log := zapr.NewLogger(zap.L())
+	var opts []grpc.DialOption
+
+	var creds credentials.TransportCredentials
+
+	if f.UseTLS {
+		capool := x509.NewCertPool()
+
+		if f.RootCA != "" {
+			log.Info("Reading root CA", "file", f.RootCA)
+
+			ca, err := os.ReadFile(f.RootCA)
+			if err != nil {
+				return nil, errors.Wrapf(err, "Failed to read rootCA file: %v", f.RootCA)
+			}
+			if !capool.AppendCertsFromPEM(ca) {
+				return nil, errors.Errorf("can't add CA certs to pool")
+			}
+		}
+		creds = credentials.NewTLS(&tls.Config{
+			// Certificates: []tls.Certificate{cert},
+			RootCAs:            capool,
+			InsecureSkipVerify: f.SkipVerify,
+			ServerName:         f.ServerName,
+			MinVersion:         tls.VersionTLS13,
+		})
+	} else {
+		creds = insecure.NewCredentials()
+	}
+
+	opts = append(opts, grpc.WithTransportCredentials(creds))
+	conn, err := grpc.Dial(f.Endpoint, opts...)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to connect to taskstore at %v", f.Endpoint)
+	}
+	return conn, nil
 }
