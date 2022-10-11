@@ -6,9 +6,10 @@ import (
 	"crypto/x509"
 	"fmt"
 	"github.com/jlewi/flaap/go/pkg/auth"
-	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/credentials/oauth"
 	"io"
 	"os"
+	"time"
 
 	"google.golang.org/grpc/credentials"
 
@@ -57,18 +58,15 @@ func NewGetStatusCmd() *cobra.Command {
 				}
 				defer conn.Close()
 
-				if err := setUpOidc(); err != nil {
-					return err
-				}
 				client := v1alpha1.NewTasksServiceClient(conn)
 
 				popts := protojson.MarshalOptions{
 					Multiline: true,
 					Indent:    "",
 				}
-				ctx := context.Background()
-				headers := metadata.Pairs("authorization", "Bearer "+grpcFlags.Token)
-				ctx = metadata.NewOutgoingContext(ctx, headers)
+
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
 
 				status, err := client.Status(ctx, &v1alpha1.StatusRequest{})
 				if err != nil {
@@ -183,27 +181,6 @@ func NewGetTasksCmd() *cobra.Command {
 	return cmd
 }
 
-func setUpOidc() error {
-
-	issuer := "https://accounts.google.com"
-	secretsFile := "/Users/jlewi/secrets/bytetoko-tff-sheets-oauth.json"
-	f, err := auth.NewOIDCWebFlowHelper(secretsFile, issuer)
-	if err != nil {
-		return err
-	}
-
-	ts, err := f.GetTokenSource(context.Background())
-	if err != nil {
-		return errors.Wrapf(err, "Failed to get tokensource")
-	}
-	t, err := ts.Token()
-	if err != nil {
-		return errors.Wrapf(err, "Failed to get token")
-	}
-	fmt.Printf("Token:\n%v\n", t.AccessToken)
-	return nil
-}
-
 type GRPCClientFlags struct {
 	UseTLS     bool
 	RootCA     string
@@ -254,10 +231,45 @@ func (f *GRPCClientFlags) NewConn() (*grpc.ClientConn, error) {
 		creds = insecure.NewCredentials()
 	}
 
+	// Create channel credentials. This basically sets up TLS for the channel.
 	opts = append(opts, grpc.WithTransportCredentials(creds))
+
+	// Create call channels; this will attach a JWT to each request.
+	// This requires TLS to be enabled because we don't want to send bearer tokens over http.
+	ts, err := f.NewOIDCTokenSource()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to create OIDC token source")
+	}
+	opts = append(opts, grpc.WithPerRPCCredentials(ts))
+
 	conn, err := grpc.Dial(f.Endpoint, opts...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to connect to taskstore at %v", f.Endpoint)
 	}
 	return conn, nil
+}
+
+// NewOIDCTokenSource returns a gRPC TokenSource that uses a JWT as the token.
+// A gRPC TokenSource wraps an oauth2 token source but implements grpc's credentials.PerRPCCredentials interface
+// which allows to inject credentials on each call.
+func (f *GRPCClientFlags) NewOIDCTokenSource() (*oauth.TokenSource, error) {
+	issuer := "https://accounts.google.com"
+	secretsFile := "/Users/jlewi/secrets/bytetoko-tff-sheets-oauth.json"
+	flow, err := auth.NewOIDCWebFlowHelper(secretsFile, issuer)
+	if err != nil {
+		return nil, err
+	}
+
+	ts, err := flow.GetTokenSource(context.Background())
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to get tokensource")
+	}
+
+	// Get an initial token to make sure the flow works.
+	if _, err := ts.Token(); err != nil {
+		return nil, errors.Wrapf(err, "Failed to get token")
+	}
+
+	gTs := oauth.TokenSource{TokenSource: ts}
+	return &gTs, nil
 }

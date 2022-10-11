@@ -109,20 +109,12 @@ func (h *OIDCWebFlowHelper) GetOAuthConfig() *oauth2.Config {
 
 // GetTokenSource requests a token from the web, then returns the retrieved token.
 func (h *OIDCWebFlowHelper) GetTokenSource(ctx context.Context) (oauth2.TokenSource, error) {
-	//authURL := h.config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-
 	authURL := h.s.AuthStartURL()
 	h.log.Info("Opening URL to start Auth Flow", "URL", authURL)
 	if err := browser.OpenURL(authURL); err != nil {
 		h.log.Error(err, "Failed to open URL in browser", "url", authURL)
-		// TODO(jlewi): How to open it automatically?
 		fmt.Printf("Go to the following link in your browser then type the "+
 			"authorization code: \n%v\n", authURL)
-	}
-
-	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		return nil, errors.Wrapf(err, "Unable to read authorization code")
 	}
 
 	tok, err := h.config.Exchange(context.TODO(), authCode)

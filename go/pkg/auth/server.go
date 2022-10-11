@@ -27,9 +27,11 @@ const (
 	authCallbackUrl = "/auth/callback"
 )
 
-// Server creates a server to be used as part of client registration in the solid-oidc protocol.
-// As discussed in https://solid.github.io/solid-oidc/#clientids the client
-// identifies itself to the OIDC provider by presenting a URL
+// Server creates a server to be used as part of client registration in the OIDC protocol.
+//
+// It is based on the code in https://github.com/coreos/go-oidc/blob/v3/example/idtoken/app.go.
+//
+// N.B: https://github.com/coreos/go-oidc/issues/354 is dicussing creating a reusable server.
 type Server struct {
 	log      logr.Logger
 	listener net.Listener
@@ -134,6 +136,14 @@ func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
+
+	// TODO(jeremy): Cookies are not port specific;
+	// see https://stackoverflow.com/questions/1612177/are-http-cookies-port-specific#:~:text=Cookies%20do%20not%20provide%20isolation%20by%20port.
+	// So if we have two completely instances of the Server running (e.g. in different CLIs) corresponding to two
+	// different ports  e.g 127.0.0.1:50002 & 127.0.0.1:60090 the would both be reading/writing the same cookies
+	// if the user was somehow going simultaneously going through the flow on both browsers. Extremely unlikely
+	// but could still cause concurrency issues. We should address that by adding some random salt to each
+	// cookie name at server construction.
 	setCallbackCookie(w, r, "state", state)
 	setCallbackCookie(w, r, "nonce", nonce)
 
@@ -141,8 +151,6 @@ func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 
 	s.log.V(logging.Debug).Info("Setting redirect URL", "state", state, "nonce", nonce, "url", redirectURL)
 	http.Redirect(w, r, redirectURL, http.StatusFound)
-	// DONOT SUBMIT this is for debugging
-	//http.Redirect(w, r, s.Address()+"/healthz", http.StatusFound)
 }
 
 // handleAuthCallback handles the OIDC auth callback code copied from
@@ -174,7 +182,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a tokensource. This will take care of automatically refreshing the token if necessary
-	// Make a copy of oauth2Token since we ill modify it below
+	// Make a copy of oauth2Token since we will modify it below
 	copy := *oauth2Token
 	s.setTokenSource(s.config.TokenSource(ctx, &copy))
 
