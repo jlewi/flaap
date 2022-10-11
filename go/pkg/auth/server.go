@@ -240,8 +240,6 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		s.c <- tokenSourceOrError{ts: idTS}
 	}()
 
-	s.setTokenSource(ts)
-
 	// Code writes the JSON version of the token to the web page.
 	// TODO(jeremy): Should we return html that says something like; here's your token please return to your
 	// application and close the webbrowser
@@ -285,20 +283,6 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(data)
-}
-
-// TODO(jeremy): I think we can delete this becaue we will use the channel.
-func (s *Server) setTokenSource(tokSrc oauth2.TokenSource) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.tokSrc = tokSrc
-}
-
-// TODO(jeremy): I think we can delete this becaue we will use the channel.
-func (s *Server) TokenSource() oauth2.TokenSource {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.tokSrc
 }
 
 func randString(nByte int) (string, error) {
