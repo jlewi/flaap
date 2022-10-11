@@ -33,12 +33,12 @@ type tokenSourceOrError struct {
 	err error
 }
 
-// Server creates a server to be used as part of client registration in the OIDC protocol.
+// OIDCWebFlowServer creates a server to be used as part of client registration in the OIDC protocol.
 //
 // It is based on the code in https://github.com/coreos/go-oidc/blob/v3/example/idtoken/app.go.
 //
-// N.B: https://github.com/coreos/go-oidc/issues/354 is dicussing creating a reusable server.
-type Server struct {
+// N.B: https://github.com/coreos/go-oidc/issues/354 is discussing creating a reusable server.
+type OIDCWebFlowServer struct {
 	log      logr.Logger
 	listener net.Listener
 	config   oauth2.Config
@@ -47,9 +47,10 @@ type Server struct {
 	tokSrc   oauth2.TokenSource
 	host     string
 	c        chan tokenSourceOrError
+	srv      *http.Server
 }
 
-func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, log logr.Logger) (*Server, error) {
+func NewOIDCWebFlowServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, log logr.Logger) (*OIDCWebFlowServer, error) {
 	u, err := url.Parse(config.RedirectURL)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Could not parse URL %v", config.RedirectURL)
@@ -61,7 +62,7 @@ func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, log logr.Lo
 		return nil, errors.Wrapf(err, "Failed to create listener")
 	}
 
-	return &Server{
+	return &OIDCWebFlowServer{
 		log:      log,
 		listener: listener,
 		config:   config,
@@ -71,16 +72,16 @@ func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, log logr.Lo
 	}, nil
 }
 
-func (s *Server) Address() string {
+func (s *OIDCWebFlowServer) Address() string {
 	return fmt.Sprintf("http://%v", s.host)
 }
 
 // AuthStartURL returns the URL to kickoff the oauth login flow.
-func (s *Server) AuthStartURL() string {
+func (s *OIDCWebFlowServer) AuthStartURL() string {
 	return s.Address() + authStartPrefix
 }
 
-func (s *Server) writeStatus(w http.ResponseWriter, message string, code int) {
+func (s *OIDCWebFlowServer) writeStatus(w http.ResponseWriter, message string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 
@@ -101,22 +102,39 @@ func (s *Server) writeStatus(w http.ResponseWriter, message string, code int) {
 	}
 }
 
-func (s *Server) HealthCheck(w http.ResponseWriter, r *http.Request) {
+func (s *OIDCWebFlowServer) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	s.writeStatus(w, "OIDC server is running", http.StatusOK)
 }
 
-func (s *Server) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+func (s *OIDCWebFlowServer) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	s.writeStatus(w, fmt.Sprintf("OIDC server doesn't handle the path; url: %v", r.URL), http.StatusNotFound)
 }
 
+// waitForReady waits until the server is health.
+func (s *OIDCWebFlowServer) waitForReady() error {
+	endTime := time.Now().Add(3 * time.Minute)
+	for time.Now().Before(endTime) {
+
+		r, err := http.Get(s.Address() + "/healthz")
+		if err == nil && r.StatusCode == http.StatusOK {
+			return nil
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return errors.New("timeout waiting for server to be healthy")
+}
+
 // Run runs the flow to create a tokensource.
-func (s *Server) Run() (oauth2.TokenSource, error) {
+func (s *OIDCWebFlowServer) Run() (oauth2.TokenSource, error) {
 	log := s.log
-	// TODO(jeremy): Refactor this so we can do graceful shutdown per https://stackoverflow.com/questions/39320025/how-to-stop-http-listenandserve
+
 	go func() {
-		s.StartAndBlock()
+		s.startAndBlock()
 	}()
-	// TODO(jeremy): We need to wait until the server is actually running.
+	log.Info("Waiting for OIDC server to be ready")
+	if err := s.waitForReady(); err != nil {
+		return nil, err
+	}
 	authURL := s.AuthStartURL()
 	log.Info("Opening URL to start Auth Flow", "URL", authURL)
 	if err := browser.OpenURL(authURL); err != nil {
@@ -126,6 +144,10 @@ func (s *Server) Run() (oauth2.TokenSource, error) {
 	// Wait for the token source
 	log.Info("Waiting for OIDC login flow to complete")
 
+	defer func() {
+		log.Info("Shutting OIDC server down")
+		s.srv.Shutdown(context.Background())
+	}()
 	select {
 	case tsOrError := <-s.c:
 		if tsOrError.err != nil {
@@ -138,8 +160,8 @@ func (s *Server) Run() (oauth2.TokenSource, error) {
 	}
 }
 
-// StartAndBlock starts the server and blocks.
-func (s *Server) StartAndBlock() error {
+// startAndBlock starts the server and blocks.
+func (s *OIDCWebFlowServer) startAndBlock() {
 	log := s.log
 
 	router := mux.NewRouter().StrictSlash(true)
@@ -151,18 +173,22 @@ func (s *Server) StartAndBlock() error {
 	router.NotFoundHandler = http.HandlerFunc(s.NotFoundHandler)
 
 	log.Info("OIDC server is running", "address", s.Address())
+
+	s.srv = &http.Server{Addr: s.host, Handler: router}
+
+	s.srv.ListenAndServe()
 	err := http.Serve(s.listener, router)
 
 	if err != nil {
-		log.Error(err, "Server returned error")
+		log.Error(err, "OIDCWebFlowServer returned error")
 	}
-	return err
+	log.Info("OIDC server has been shutdown")
 }
 
 // handleStartWebFlow kicks off the OIDC web flow.
 // It was copied from: https://github.com/coreos/go-oidc/blob/2cafe189143f4a454e8b4087ef892be64b1c77df/example/idtoken/app.go#L65
 // It sets some cookies before redirecting to the OIDC provider's URL for obtaining an authorization code.
-func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
+func (s *OIDCWebFlowServer) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 	state, err := randString(16)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -178,7 +204,7 @@ func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 
 	// TODO(jeremy): Cookies are not port specific;
 	// see https://stackoverflow.com/questions/1612177/are-http-cookies-port-specific#:~:text=Cookies%20do%20not%20provide%20isolation%20by%20port.
-	// So if we have two completely instances of the Server running (e.g. in different CLIs) corresponding to two
+	// So if we have two completely instances of the OIDCWebFlowServer running (e.g. in different CLIs) corresponding to two
 	// different ports  e.g 127.0.0.1:50002 & 127.0.0.1:60090 the would both be reading/writing the same cookies
 	// if the user was somehow going simultaneously going through the flow on both browsers. Extremely unlikely
 	// but could still cause concurrency issues. We should address that by adding some random salt to each
@@ -199,7 +225,7 @@ func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 // https://solid.github.io/solid-oidc/primer/#:~:text=Solid%2DOIDC%20builds%20on%20top,authentication%20in%20the%20Solid%20ecosystem.
 // The OpenID server responds with a 303 redirect to the AuthCallback URL and passes the authorization code.
 // This is a mechanism for the authorization code to be passed into the code.
-func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
+func (s *OIDCWebFlowServer) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	state, err := r.Cookie("state")
@@ -282,6 +308,9 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	fmt.Fprintf(w, "OIDC Flow completed successfully.\n")
+	fmt.Fprintf(w, "Please close the browser and return to your application.\n")
+	fmt.Fprintf(w, "Information about the OIDC token is provided below.\n")
 	w.Write(data)
 }
 

@@ -21,7 +21,7 @@ import (
 type OIDCWebFlowHelper struct {
 	config *oauth2.Config
 	log    logr.Logger
-	s      *Server
+	s      *OIDCWebFlowServer
 	ts     oauth2.TokenSource
 }
 
@@ -86,15 +86,10 @@ func NewOIDCWebFlowHelper(oAuthClientFile string, issuer string) (*OIDCWebFlowHe
 
 	log := zapr.NewLogger(zap.L())
 
-	s, err := NewServer(*config, verifier, log)
+	s, err := NewOIDCWebFlowServer(*config, verifier, log)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to create server")
 	}
-
-	//// Run the server in a background thread.
-	//go func() {
-	//	s.StartAndBlock()
-	//}()
 
 	// Get a token source
 
