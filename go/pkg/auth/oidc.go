@@ -7,6 +7,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
+	"github.com/jlewi/flaap/go/pkg/networking"
 	"github.com/kubeflow/internal-acls/google_groups/pkg/gcp/gcs"
 	"github.com/pkg/browser"
 	"github.com/pkg/errors"
@@ -14,7 +15,6 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"io"
-	"net"
 	"strings"
 )
 
@@ -66,12 +66,11 @@ func NewOIDCWebFlowHelper(oAuthClientFile string, issuer string) (*OIDCWebFlowHe
 	}
 
 	// TODO(jeremy): make this a parameter. 0 picks a free port.
-	port := 0
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	port, err := networking.GetFreePort()
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create listener")
+		return nil, errors.Wrapf(err, "Failed to get free port")
 	}
-	config.RedirectURL = "http://" + listener.Addr().String() + "/auth/callback"
+	config.RedirectURL = fmt.Sprintf("http://127.0.0.1:%v/%v", port, authCallbackUrl)
 	p, err := oidc.NewProvider(context.Background(), issuer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to create OIDC provider for %v", issuer)
@@ -87,7 +86,7 @@ func NewOIDCWebFlowHelper(oAuthClientFile string, issuer string) (*OIDCWebFlowHe
 
 	log := zapr.NewLogger(zap.L())
 
-	s, err := NewServer(*config, verifier, listener, log)
+	s, err := NewServer(*config, verifier, log)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to create server")
 	}

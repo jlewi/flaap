@@ -17,12 +17,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
 
 const (
 	authStartPrefix = "/auth/start"
+	authCallbackUrl = "/auth/callback"
 )
 
 // Server creates a server to be used as part of client registration in the solid-oidc protocol.
@@ -35,22 +37,32 @@ type Server struct {
 	verifier *oidc.IDTokenVerifier
 	mu       sync.Mutex
 	tokSrc   oauth2.TokenSource
+	host     string
 }
 
-func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, listener net.Listener, log logr.Logger) (*Server, error) {
-	if listener == nil {
-		return nil, errors.Errorf("listener must be set")
+func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, log logr.Logger) (*Server, error) {
+	u, err := url.Parse(config.RedirectURL)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Could not parse URL %v", config.RedirectURL)
 	}
+
+	log.Info("Creating listener", "host", u.Host)
+	listener, err := net.Listen("tcp", u.Host)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to create listener")
+	}
+
 	return &Server{
 		log:      log,
 		listener: listener,
 		config:   config,
 		verifier: verifier,
+		host:     u.Host,
 	}, nil
 }
 
 func (s *Server) Address() string {
-	return fmt.Sprintf("http://127.0.0.1:%v", s.listener.Addr().(*net.TCPAddr).Port)
+	return fmt.Sprintf("http://%v", s.host)
 }
 
 // AuthStartURL returns the URL to kickoff the oauth login flow.
@@ -95,7 +107,7 @@ func (s *Server) StartAndBlock() error {
 
 	router.HandleFunc(authStartPrefix, s.handleStartWebFlow)
 	router.HandleFunc("/healthz", s.HealthCheck)
-	router.HandleFunc("/auth/callback", s.handleAuthCallback)
+	router.HandleFunc(authCallbackUrl, s.handleAuthCallback)
 
 	router.NotFoundHandler = http.HandlerFunc(s.NotFoundHandler)
 
