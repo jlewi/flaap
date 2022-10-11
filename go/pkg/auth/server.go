@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jlewi/p22h/backend/api"
 	"github.com/jlewi/p22h/backend/pkg/debug"
+	"github.com/jlewi/p22h/backend/pkg/logging"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 	"io"
@@ -49,7 +50,7 @@ func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, listener ne
 }
 
 func (s *Server) Address() string {
-	return fmt.Sprintf("http://localhost:%v", s.listener.Addr().(*net.TCPAddr).Port)
+	return fmt.Sprintf("http://127.0.0.1:%v", s.listener.Addr().(*net.TCPAddr).Port)
 }
 
 // AuthStartURL returns the URL to kickoff the oauth login flow.
@@ -121,12 +122,13 @@ func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
-	// DO NOT SUBMIT
-	s.log.Info("Setting cookies", "state", state, "nonce", nonce)
 	setCallbackCookie(w, r, "state", state)
 	setCallbackCookie(w, r, "nonce", nonce)
 
-	http.Redirect(w, r, s.config.AuthCodeURL(state, oidc.Nonce(nonce)), http.StatusFound)
+	redirectURL := s.config.AuthCodeURL(state, oidc.Nonce(nonce))
+
+	s.log.V(logging.Debug).Info("Setting redirect URL", "state", state, "nonce", nonce, "url", redirectURL)
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 	// DONOT SUBMIT this is for debugging
 	//http.Redirect(w, r, s.Address()+"/healthz", http.StatusFound)
 }
