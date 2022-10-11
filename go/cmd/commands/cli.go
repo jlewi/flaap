@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"github.com/jlewi/flaap/go/pkg/auth"
+	"google.golang.org/grpc/metadata"
 	"io"
 	"os"
 
@@ -55,14 +57,20 @@ func NewGetStatusCmd() *cobra.Command {
 				}
 				defer conn.Close()
 
+				if err := setUpOidc(); err != nil {
+					return err
+				}
 				client := v1alpha1.NewTasksServiceClient(conn)
 
 				popts := protojson.MarshalOptions{
 					Multiline: true,
 					Indent:    "",
 				}
+				ctx := context.Background()
+				headers := metadata.Pairs("authorization", "Bearer "+grpcFlags.Token)
+				ctx = metadata.NewOutgoingContext(ctx, headers)
 
-				status, err := client.Status(context.Background(), &v1alpha1.StatusRequest{})
+				status, err := client.Status(ctx, &v1alpha1.StatusRequest{})
 				if err != nil {
 					return errors.Wrapf(err, "status request failed")
 				}
@@ -175,18 +183,41 @@ func NewGetTasksCmd() *cobra.Command {
 	return cmd
 }
 
+func setUpOidc() error {
+
+	issuer := "https://accounts.google.com"
+	secretsFile := "/Users/jlewi/secrets/bytetoko-tff-sheets-oauth.json"
+	f, err := auth.NewOIDCWebFlowHelper(secretsFile, issuer)
+	if err != nil {
+		return err
+	}
+
+	ts, err := f.GetTokenSource(context.Background())
+	if err != nil {
+		return errors.Wrapf(err, "Failed to get tokensource")
+	}
+	t, err := ts.Token()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to get token")
+	}
+	fmt.Printf("Token:\n%v\n", t.AccessToken)
+	return nil
+}
+
 type GRPCClientFlags struct {
 	UseTLS     bool
 	RootCA     string
 	SkipVerify bool
 	ServerName string
 	Endpoint   string
+	Token      string
 }
 
 func (f *GRPCClientFlags) AddFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&f.Endpoint, "endpoint", "e", defaultAPIEndpoint, "The endpoint of the taskstore")
 	cmd.Flags().BoolVarP(&f.UseTLS, "use-tls", "", true, "Whether to use TLS to connect to the server")
 	cmd.Flags().StringVarP(&f.RootCA, "root-ca", "", "", "CA file to use for validating client certs")
+	cmd.Flags().StringVarP(&f.Token, "auth-token", "", "", "Authorization token to use.")
 	cmd.Flags().StringVarP(&f.ServerName, "server-name", "", "", "The servername to use to validate the certificate")
 	cmd.Flags().BoolVarP(&f.SkipVerify, "insecure-skip-verify", "", false, "Whether to verify the server's certificate")
 }
