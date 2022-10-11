@@ -121,10 +121,14 @@ func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
+	// DO NOT SUBMIT
+	s.log.Info("Setting cookies", "state", state, "nonce", nonce)
 	setCallbackCookie(w, r, "state", state)
 	setCallbackCookie(w, r, "nonce", nonce)
 
 	http.Redirect(w, r, s.config.AuthCodeURL(state, oidc.Nonce(nonce)), http.StatusFound)
+	// DONOT SUBMIT this is for debugging
+	//http.Redirect(w, r, s.Address()+"/healthz", http.StatusFound)
 }
 
 // handleAuthCallback handles the OIDC auth callback code copied from
@@ -142,7 +146,9 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "state not found", http.StatusBadRequest)
 		return
 	}
-	if r.URL.Query().Get("state") != state.Value {
+	actual := r.URL.Query().Get("state")
+	if actual != state.Value {
+		s.log.Info("state dind't match", "got", actual, "want", state.Value)
 		http.Error(w, "state did not match", http.StatusBadRequest)
 		return
 	}
@@ -228,7 +234,9 @@ func setCallbackCookie(w http.ResponseWriter, r *http.Request, name, value strin
 		MaxAge:   int(time.Hour.Seconds()),
 		Secure:   r.TLS != nil,
 		HttpOnly: true,
-		SameSite: http.SameSiteNoneMode,
+		// See: https://medium.com/swlh/7-keys-to-the-mystery-of-a-missing-cookie-fdf22b012f09
+		// Match all paths
+		Path: "/",
 	}
 	http.SetCookie(w, c)
 }
