@@ -2,11 +2,14 @@ package commands
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"github.com/jlewi/flaap/go/pkg/auth"
 	"google.golang.org/grpc/credentials/oauth"
+	"google.golang.org/grpc/metadata"
 	"io"
 	"os"
 	"time"
@@ -68,6 +71,15 @@ func NewGetStatusCmd() *cobra.Command {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
 
+				// https://cloud.google.com/trace/docs/setup#force-trace
+				// 32 hexadecimal characters = 16 bytes
+				traceId, err := randomHex(16)
+				if err != nil {
+					return errors.Wrapf(err, "Failed to generate traceId")
+				}
+				traceVal := fmt.Sprintf("%v/1;o=1", traceId)
+				md := metadata.Pairs("X-Cloud-Trace-Context", traceVal)
+				ctx = metadata.NewOutgoingContext(ctx, md)
 				status, err := client.Status(ctx, &v1alpha1.StatusRequest{})
 				if err != nil {
 					return errors.Wrapf(err, "status request failed")
@@ -94,6 +106,14 @@ func NewGetStatusCmd() *cobra.Command {
 
 	grpcFlags.AddFlags(cmd)
 	return cmd
+}
+
+func randomHex(n int) (string, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 func NewGetTasksCmd() *cobra.Command {
