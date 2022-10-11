@@ -9,7 +9,6 @@ import (
 	"github.com/go-logr/zapr"
 	"github.com/jlewi/flaap/go/pkg/networking"
 	"github.com/kubeflow/internal-acls/google_groups/pkg/gcp/gcs"
-	"github.com/pkg/browser"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
@@ -23,6 +22,7 @@ type OIDCWebFlowHelper struct {
 	config *oauth2.Config
 	log    logr.Logger
 	s      *Server
+	ts     oauth2.TokenSource
 }
 
 // NewOIDCWebFlowHelper constructs a new web flow helper. oAuthClientFile should be the path to a credentials.json
@@ -91,15 +91,24 @@ func NewOIDCWebFlowHelper(oAuthClientFile string, issuer string) (*OIDCWebFlowHe
 		return nil, errors.Wrapf(err, "Failed to create server")
 	}
 
-	// Run the server in a background thread.
-	go func() {
-		s.StartAndBlock()
-	}()
+	//// Run the server in a background thread.
+	//go func() {
+	//	s.StartAndBlock()
+	//}()
+
+	// Get a token source
+
+	ts, err := s.Run()
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to create OIDC tokensource")
+	}
 
 	return &OIDCWebFlowHelper{
 		config: config,
 		log:    log,
 		s:      s,
+		ts:     ts,
 	}, nil
 }
 
@@ -109,18 +118,37 @@ func (h *OIDCWebFlowHelper) GetOAuthConfig() *oauth2.Config {
 
 // GetTokenSource requests a token from the web, then returns the retrieved token.
 func (h *OIDCWebFlowHelper) GetTokenSource(ctx context.Context) (oauth2.TokenSource, error) {
-	authURL := h.s.AuthStartURL()
-	h.log.Info("Opening URL to start Auth Flow", "URL", authURL)
-	if err := browser.OpenURL(authURL); err != nil {
-		h.log.Error(err, "Failed to open URL in browser", "url", authURL)
-		fmt.Printf("Go to the following link in your browser then type the "+
-			"authorization code: \n%v\n", authURL)
-	}
+	return h.ts, nil
+}
 
-	tok, err := h.config.Exchange(context.TODO(), authCode)
+// IDTokenSource is a wrapper around a TokenSource that returns the OpenID token as the access token.
+type IDTokenSource struct {
+	Source   oauth2.TokenSource
+	Verifier *oidc.IDTokenVerifier
+}
+
+func (s *IDTokenSource) Token() (*oauth2.Token, error) {
+	tk, err := s.Source.Token()
 	if err != nil {
-		return nil, errors.Wrapf(err, "Unable to retrieve token from web: %v")
+		return nil, errors.Wrapf(err, "IDTokenSource failed to get token from underlying token source")
+	}
+	// Per https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+	// the ID token is returned in the id_token field
+	rawTok, ok := tk.Extra("id_token").(string)
+	if !ok {
+		return nil, errors.Errorf("Underlying token source didn't have field id_token")
 	}
 
-	return h.config.TokenSource(ctx, tok), nil
+	tok, err := s.Verifier.Verify(context.Background(), rawTok)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to verify ID token")
+	}
+
+	// Create a new OAuthToken in which the Access token is the JWT (i.e. the ID token).
+	jwtToken := &oauth2.Token{
+		AccessToken: rawTok,
+		Expiry:      tok.Expiry,
+	}
+
+	return jwtToken, nil
 }

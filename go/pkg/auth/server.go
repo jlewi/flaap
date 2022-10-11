@@ -12,6 +12,7 @@ import (
 	"github.com/jlewi/p22h/backend/api"
 	"github.com/jlewi/p22h/backend/pkg/debug"
 	"github.com/jlewi/p22h/backend/pkg/logging"
+	"github.com/pkg/browser"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 	"io"
@@ -27,6 +28,11 @@ const (
 	authCallbackUrl = "/auth/callback"
 )
 
+type tokenSourceOrError struct {
+	ts  oauth2.TokenSource
+	err error
+}
+
 // Server creates a server to be used as part of client registration in the OIDC protocol.
 //
 // It is based on the code in https://github.com/coreos/go-oidc/blob/v3/example/idtoken/app.go.
@@ -40,6 +46,7 @@ type Server struct {
 	mu       sync.Mutex
 	tokSrc   oauth2.TokenSource
 	host     string
+	c        chan tokenSourceOrError
 }
 
 func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, log logr.Logger) (*Server, error) {
@@ -60,6 +67,7 @@ func NewServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, log logr.Lo
 		config:   config,
 		verifier: verifier,
 		host:     u.Host,
+		c:        make(chan tokenSourceOrError, 10),
 	}, nil
 }
 
@@ -101,6 +109,35 @@ func (s *Server) NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	s.writeStatus(w, fmt.Sprintf("OIDC server doesn't handle the path; url: %v", r.URL), http.StatusNotFound)
 }
 
+// Run runs the flow to create a tokensource.
+func (s *Server) Run() (oauth2.TokenSource, error) {
+	log := s.log
+	// TODO(jeremy): Refactor this so we can do graceful shutdown per https://stackoverflow.com/questions/39320025/how-to-stop-http-listenandserve
+	go func() {
+		s.StartAndBlock()
+	}()
+	// TODO(jeremy): We need to wait until the server is actually running.
+	authURL := s.AuthStartURL()
+	log.Info("Opening URL to start Auth Flow", "URL", authURL)
+	if err := browser.OpenURL(authURL); err != nil {
+		log.Error(err, "Failed to open URL in browser; open it manually", "url", authURL)
+		fmt.Printf("Go to the following link in your browser to complete  the OIDC flow: %v\n", authURL)
+	}
+	// Wait for the token source
+	log.Info("Waiting for OIDC login flow to complete")
+
+	select {
+	case tsOrError := <-s.c:
+		if tsOrError.err != nil {
+			return nil, errors.Wrapf(tsOrError.err, "OIDC flow didn't complete successfully")
+		}
+		log.Info("OIDC flow completed")
+		return tsOrError.ts, nil
+	case <-time.After(3 * time.Minute):
+		return nil, errors.New("Timeout waiting for OIDC flow to complete")
+	}
+}
+
 // StartAndBlock starts the server and blocks.
 func (s *Server) StartAndBlock() error {
 	log := s.log
@@ -129,11 +166,13 @@ func (s *Server) handleStartWebFlow(w http.ResponseWriter, r *http.Request) {
 	state, err := randString(16)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		s.c <- tokenSourceOrError{err: errors.Wrapf(err, "Failed to generate state")}
 		return
 	}
 	nonce, err := randString(16)
 	if err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
+		s.c <- tokenSourceOrError{err: errors.Wrapf(err, "Failed to generate nonce")}
 		return
 	}
 
@@ -166,26 +205,46 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	state, err := r.Cookie("state")
 	if err != nil {
 		http.Error(w, "state not found", http.StatusBadRequest)
+		s.c <- tokenSourceOrError{err: errors.New("state cookie not set")}
 		return
 	}
 	actual := r.URL.Query().Get("state")
 	if actual != state.Value {
 		s.log.Info("state dind't match", "got", actual, "want", state.Value)
 		http.Error(w, "state did not match", http.StatusBadRequest)
+		s.c <- tokenSourceOrError{err: errors.New("state argument didn't match value in cookie")}
 		return
 	}
 
 	oauth2Token, err := s.config.Exchange(ctx, r.URL.Query().Get("code"))
 	if err != nil {
 		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
+		s.c <- tokenSourceOrError{err: errors.Wrapf(err, "Failed to exchange token")}
 		return
 	}
 
 	// Create a tokensource. This will take care of automatically refreshing the token if necessary
 	// Make a copy of oauth2Token since we will modify it below
 	copy := *oauth2Token
-	s.setTokenSource(s.config.TokenSource(ctx, &copy))
+	ts := s.config.TokenSource(ctx, &copy)
 
+	// Create an ID token source that wraps this token source
+	idTS := &IDTokenSource{
+		Source:   ts,
+		Verifier: s.verifier,
+	}
+
+	// We want to emit the tokenSource after the server has served the page because the channel is used to signal
+	// that the flow has completed and therefore the server can be shutdown.
+	defer func() {
+		s.c <- tokenSourceOrError{ts: idTS}
+	}()
+
+	s.setTokenSource(ts)
+
+	// Code writes the JSON version of the token to the web page.
+	// TODO(jeremy): Should we return html that says something like; here's your token please return to your
+	// application and close the webbrowser
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
 	if !ok {
 		http.Error(w, "No id_token field in oauth2 token.", http.StatusInternalServerError)
@@ -228,12 +287,14 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// TODO(jeremy): I think we can delete this becaue we will use the channel.
 func (s *Server) setTokenSource(tokSrc oauth2.TokenSource) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tokSrc = tokSrc
 }
 
+// TODO(jeremy): I think we can delete this becaue we will use the channel.
 func (s *Server) TokenSource() oauth2.TokenSource {
 	s.mu.Lock()
 	defer s.mu.Unlock()
