@@ -7,6 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+	"time"
+
+	"github.com/jlewi/flaap/go/pkg/auth"
+	"google.golang.org/grpc/credentials/oauth"
 
 	"google.golang.org/grpc/credentials"
 
@@ -62,7 +67,10 @@ func NewGetStatusCmd() *cobra.Command {
 					Indent:    "",
 				}
 
-				status, err := client.Status(context.Background(), &v1alpha1.StatusRequest{})
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+
+				status, err := client.Status(ctx, &v1alpha1.StatusRequest{})
 				if err != nil {
 					return errors.Wrapf(err, "status request failed")
 				}
@@ -176,19 +184,33 @@ func NewGetTasksCmd() *cobra.Command {
 }
 
 type GRPCClientFlags struct {
-	UseTLS     bool
-	RootCA     string
-	SkipVerify bool
-	ServerName string
-	Endpoint   string
+	UseTLS          bool
+	RootCA          string
+	SkipVerify      bool
+	ServerName      string
+	Endpoint        string
+	Token           string
+	Issuer          string
+	OAuthClientFile string
+	UseOidc         bool
 }
 
 func (f *GRPCClientFlags) AddFlags(cmd *cobra.Command) {
+	dirname, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("failed to get home directory. This only affects default values for command line flags. Error; %v", err)
+		dirname = "/"
+	}
+	defaultOAuthClientFile := path.Join(dirname, "secrets", "flaap-oauth-client.json")
 	cmd.Flags().StringVarP(&f.Endpoint, "endpoint", "e", defaultAPIEndpoint, "The endpoint of the taskstore")
 	cmd.Flags().BoolVarP(&f.UseTLS, "use-tls", "", true, "Whether to use TLS to connect to the server")
 	cmd.Flags().StringVarP(&f.RootCA, "root-ca", "", "", "CA file to use for validating client certs")
+	cmd.Flags().StringVarP(&f.Token, "auth-token", "", "", "Authorization token to use.")
 	cmd.Flags().StringVarP(&f.ServerName, "server-name", "", "", "The servername to use to validate the certificate")
-	cmd.Flags().BoolVarP(&f.SkipVerify, "insecure-skip-verify", "", false, "Whether to verify the server's certificate")
+	cmd.Flags().BoolVarP(&f.SkipVerify, "insecure-skip-verify", "", false, "Whether to verify the server's certificate. Set to true if server is using a self-signed certificate.")
+	cmd.Flags().StringVarP(&f.Issuer, "oidc-issuer", "", "https://accounts.google.com", "The OIDC issuer to use when using OIDC")
+	cmd.Flags().StringVarP(&f.OAuthClientFile, "oidc-client-file", "", defaultOAuthClientFile, "The file containing the OAuth client to use with OIDC")
+	cmd.Flags().BoolVarP(&f.UseOidc, "oidc-enabled", "", true, "Whether to enable OIDC for AuthN/AuthZ. If enabled oidc-issuer and oidc-client-file must be set correctly for the OIDC issuer.")
 }
 
 // NewConn creates a new connection with the given flogs
@@ -200,7 +222,6 @@ func (f *GRPCClientFlags) NewConn() (*grpc.ClientConn, error) {
 
 	if f.UseTLS {
 		capool := x509.NewCertPool()
-
 		if f.RootCA != "" {
 			log.Info("Reading root CA", "file", f.RootCA)
 
@@ -223,10 +244,48 @@ func (f *GRPCClientFlags) NewConn() (*grpc.ClientConn, error) {
 		creds = insecure.NewCredentials()
 	}
 
+	// Create channel credentials. This basically sets up TLS for the channel.
 	opts = append(opts, grpc.WithTransportCredentials(creds))
+
+	if f.UseOidc {
+		// Create call channels; this will attach a JWT to each request.
+		// This requires TLS to be enabled because we don't want to send bearer tokens over http.
+		ts, err := f.NewOIDCTokenSource()
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create OIDC token source")
+		}
+		log.Info("OIDC enabled")
+		opts = append(opts, grpc.WithPerRPCCredentials(ts))
+	}
+
 	conn, err := grpc.Dial(f.Endpoint, opts...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to connect to taskstore at %v", f.Endpoint)
 	}
 	return conn, nil
+}
+
+// NewOIDCTokenSource returns a gRPC TokenSource that uses a JWT as the token.
+// A gRPC TokenSource wraps an oauth2 token source but implements grpc's credentials.PerRPCCredentials interface
+// which allows to inject credentials on each call.
+func (f *GRPCClientFlags) NewOIDCTokenSource() (*oauth.TokenSource, error) {
+	log := zapr.NewLogger(zap.L())
+	log.Info("Creating OIDCWebFlowHelper", "oauth-client-file", f.OAuthClientFile, "issuer", f.Issuer)
+	flow, err := auth.NewOIDCWebFlowHelper(f.OAuthClientFile, f.Issuer)
+	if err != nil {
+		return nil, err
+	}
+
+	ts, err := flow.GetTokenSource(context.Background())
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to get tokensource")
+	}
+
+	// Get an initial token to make sure the flow works.
+	if _, err := ts.Token(); err != nil {
+		return nil, errors.Wrapf(err, "Failed to get token")
+	}
+
+	gTs := oauth.TokenSource{TokenSource: ts}
+	return &gTs, nil
 }
