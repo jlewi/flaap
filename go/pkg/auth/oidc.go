@@ -18,6 +18,15 @@ import (
 )
 
 // OIDCWebFlowHelper helps get an OIDC token using the web flow.
+// GetTokenSource returns a token source which surfaces the OIDC token as the AccessToken.
+// This tokensource can used for Authorization flows that use OIDC tokens as the bearer token.
+//
+// This flow is useful when obtaining OIDC tokens for human based accounts as these require the user to go through
+// an OAuth web flow to generate the credentials.
+//
+// For robot accounts it should be possible to generate the OIDC token without going through the WebFlow; e.g. by
+// using the private key for the robot account.
+// See for example: https://pkg.go.dev/google.golang.org/api/idtoken
 type OIDCWebFlowHelper struct {
 	config *oauth2.Config
 	log    logr.Logger
@@ -92,7 +101,6 @@ func NewOIDCWebFlowHelper(oAuthClientFile string, issuer string) (*OIDCWebFlowHe
 	}
 
 	// Get a token source
-
 	ts, err := s.Run()
 
 	if err != nil {
