@@ -1,9 +1,12 @@
 package auth
 
 import (
-	"cloud.google.com/go/storage"
 	"context"
 	"fmt"
+	"io"
+	"strings"
+
+	"cloud.google.com/go/storage"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -13,8 +16,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"io"
-	"strings"
 )
 
 // OIDCWebFlowHelper helps get an OIDC token using the web flow.

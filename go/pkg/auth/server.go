@@ -6,6 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
+
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-logr/logr"
 	"github.com/gorilla/mux"
@@ -15,12 +20,6 @@ import (
 	"github.com/pkg/browser"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
-	"io"
-	"net"
-	"net/http"
-	"net/url"
-	"sync"
-	"time"
 )
 
 const (
@@ -40,11 +39,8 @@ type tokenSourceOrError struct {
 // N.B: https://github.com/coreos/go-oidc/issues/354 is discussing creating a reusable server.
 type OIDCWebFlowServer struct {
 	log      logr.Logger
-	listener net.Listener
 	config   oauth2.Config
 	verifier *oidc.IDTokenVerifier
-	mu       sync.Mutex
-	tokSrc   oauth2.TokenSource
 	host     string
 	c        chan tokenSourceOrError
 	srv      *http.Server
@@ -56,15 +52,8 @@ func NewOIDCWebFlowServer(config oauth2.Config, verifier *oidc.IDTokenVerifier, 
 		return nil, errors.Wrapf(err, "Could not parse URL %v", config.RedirectURL)
 	}
 
-	log.Info("Creating listener", "host", u.Host)
-	listener, err := net.Listen("tcp", u.Host)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to create listener")
-	}
-
 	return &OIDCWebFlowServer{
 		log:      log,
-		listener: listener,
 		config:   config,
 		verifier: verifier,
 		host:     u.Host,
@@ -146,7 +135,10 @@ func (s *OIDCWebFlowServer) Run() (oauth2.TokenSource, error) {
 
 	defer func() {
 		log.Info("Shutting OIDC server down")
-		s.srv.Shutdown(context.Background())
+		err := s.srv.Shutdown(context.Background())
+		if err != nil {
+			log.Error(err, "There was a problem shutting the OIDC server down")
+		}
 	}()
 	select {
 	case tsOrError := <-s.c:
@@ -176,8 +168,7 @@ func (s *OIDCWebFlowServer) startAndBlock() {
 
 	s.srv = &http.Server{Addr: s.host, Handler: router}
 
-	s.srv.ListenAndServe()
-	err := http.Serve(s.listener, router)
+	err := s.srv.ListenAndServe()
 
 	if err != nil {
 		log.Error(err, "OIDCWebFlowServer returned error")
@@ -311,7 +302,9 @@ func (s *OIDCWebFlowServer) handleAuthCallback(w http.ResponseWriter, r *http.Re
 	fmt.Fprintf(w, "OIDC Flow completed successfully.\n")
 	fmt.Fprintf(w, "Please close the browser and return to your application.\n")
 	fmt.Fprintf(w, "Information about the OIDC token is provided below.\n")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		s.log.Error(err, "There was a problem writing the response")
+	}
 }
 
 func randString(nByte int) (string, error) {

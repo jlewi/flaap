@@ -5,12 +5,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"github.com/jlewi/flaap/go/pkg/auth"
-	"google.golang.org/grpc/credentials/oauth"
 	"io"
 	"os"
 	"path"
 	"time"
+
+	"github.com/jlewi/flaap/go/pkg/auth"
+	"google.golang.org/grpc/credentials/oauth"
 
 	"google.golang.org/grpc/credentials"
 
